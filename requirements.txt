@@ -1,0 +1,12 @@
+numpy
+pillow
+opencv-python
+scikit-learn
+pandas
+matplotlib
+PyYAML
+reportlab
+streamlit
+fastapi
+uvicorn[standard]
+python-multipart

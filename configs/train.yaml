@@ -1,0 +1,34 @@
+dataset:
+  name: aptos
+  labels_csv: data/raw/aptos2019/train.csv
+  image_dir: data/raw/aptos2019/images_288_scaled
+  label_mapping: {}
+image:
+  size: 224
+  crop_black_borders: true
+split:
+  train: 0.70
+  validation: 0.15
+  test: 0.15
+  seed: 42
+model:
+  name: efficientnet_b0
+  candidates:
+    - baseline_sklearn
+    - efficientnet_b0
+    - efficientnet_b3
+    - resnet50
+  baseline: baseline_sklearn
+  class_weight: balanced
+  n_estimators: 300
+  max_depth: null
+  train_base: false
+training:
+  batch_size: 32
+  epochs: 20
+  early_stopping_patience: 5
+  learning_rate: 0.0001
+  mixed_precision: true
+outputs:
+  model_dir: models
+  report_dir: reports

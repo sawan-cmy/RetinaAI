@@ -1,0 +1,3 @@
+# Optional heavy stack for transfer-learning experiments.
+# Install only when you are ready to train CNN models.
+tensorflow

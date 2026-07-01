@@ -1,0 +1,25 @@
+repos:
+  - repo: local
+    hooks:
+      - id: python-compile
+        name: python compile
+        entry: python -m compileall -q app src tests
+        language: system
+        pass_filenames: false
+      - id: python-tests
+        name: python tests
+        entry: python -m pytest
+        language: system
+        pass_filenames: false
+      - id: frontend-lint
+        name: frontend lint
+        entry: python -c "import subprocess, sys; sys.exit(subprocess.call(['npm','run','lint'], cwd='frontend'))"
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+      - id: frontend-typecheck
+        name: frontend typecheck
+        entry: python -c "import subprocess, sys; sys.exit(subprocess.call(['npm','run','typecheck'], cwd='frontend'))"
+        language: system
+        pass_filenames: false
+        files: ^frontend/
