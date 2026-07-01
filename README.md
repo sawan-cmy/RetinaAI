@@ -186,10 +186,11 @@ npm run test:e2e
 
 ## Screenshots
 
-Add current screenshots under `docs/screenshots/` after running the app:
+![Upload Screen](docs/screenshots/upload.png)
+
+Add other current screenshots under `docs/screenshots/` after running the app:
 
 - `docs/screenshots/dashboard.png`
-- `docs/screenshots/upload.png`
 - `docs/screenshots/gradcam.png`
 - `docs/screenshots/report.png`
 
