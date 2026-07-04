@@ -12,12 +12,21 @@ DEFAULT_THRESHOLDS = {
 }
 
 
-def load_uncertainty_thresholds(path: str | Path | None = None) -> dict:
+def _site_section(data: dict, site_id: str | None, section: str) -> dict:
+    if not site_id:
+        return {}
+    sites = data.get("sites", {}) or {}
+    site = sites.get(site_id) or sites.get(site_id.lower()) or {}
+    return site.get(section, site) or {}
+
+
+def load_uncertainty_thresholds(path: str | Path | None = None, site_id: str | None = None) -> dict:
     if not path or not Path(path).exists():
         return DEFAULT_THRESHOLDS.copy()
     with Path(path).open("r", encoding="utf-8") as handle:
         data = yaml.safe_load(handle) or {}
-    return {**DEFAULT_THRESHOLDS, **(data.get("uncertainty", data) or {})}
+    base = data.get("uncertainty", data) or {}
+    return {**DEFAULT_THRESHOLDS, **base, **_site_section(data, site_id, "uncertainty")}
 
 
 def normalize_probabilities(probabilities) -> np.ndarray:

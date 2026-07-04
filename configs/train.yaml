@@ -12,9 +12,10 @@ split:
   test: 0.15
   seed: 42
 model:
-  name: efficientnet_b0
+  name: simple_cnn
   candidates:
     - baseline_sklearn
+    - simple_cnn
     - efficientnet_b0
     - efficientnet_b3
     - resnet50

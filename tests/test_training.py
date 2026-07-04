@@ -1,6 +1,15 @@
 import numpy as np
+import pytest
 
-from src.models import CNN_MODEL_SPECS, predict_probabilities, save_model, set_reproducible_seed, train_baseline
+from src.models import (
+    CNN_MODEL_SPECS,
+    build_transfer_learning_model,
+    get_preprocess_function,
+    predict_probabilities,
+    save_model,
+    set_reproducible_seed,
+    train_baseline,
+)
 
 
 def test_baseline_training_and_probability_shape(work_dir):
@@ -16,4 +25,15 @@ def test_baseline_training_and_probability_shape(work_dir):
 
 
 def test_transfer_model_registry_contains_required_models():
-    assert {"efficientnet_b0", "efficientnet_b3", "resnet50"}.issubset(CNN_MODEL_SPECS)
+    assert {"simple_cnn", "efficientnet_b0", "efficientnet_b3", "resnet50"}.issubset(CNN_MODEL_SPECS)
+
+
+def test_simple_cnn_builds_probability_output():
+    pytest.importorskip("tensorflow")
+    preprocess = get_preprocess_function("simple_cnn")
+    np.testing.assert_allclose(preprocess(np.asarray([0, 255], dtype=np.float32)), [0, 1])
+
+    model = build_transfer_learning_model("simple_cnn", input_shape=(32, 32, 3), num_classes=5)
+    probabilities = model(np.zeros((1, 32, 32, 3), dtype=np.float32), training=False).numpy()
+    assert probabilities.shape == (1, 5)
+    np.testing.assert_allclose(probabilities.sum(axis=1), [1.0], rtol=1e-5)

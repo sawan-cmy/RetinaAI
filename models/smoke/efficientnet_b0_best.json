@@ -1,0 +1,18 @@
+{
+  "kind": "keras_cnn",
+  "model_name": "efficientnet_b0",
+  "display_name": "EfficientNet-B0",
+  "input_size": 224,
+  "last_conv_layer": "top_conv",
+  "classes": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "seed": 7,
+  "epochs": 1,
+  "batch_size": 4,
+  "mixed_precision": false
+}

@@ -14,6 +14,13 @@ from .constants import DR_CLASSES
 from .preprocessing import preprocess_image
 
 CNN_MODEL_SPECS: dict[str, dict[str, Any]] = {
+    "simple_cnn": {
+        "display_name": "Simple CNN",
+        "keras_name": None,
+        "preprocess_module": None,
+        "input_size": 224,
+        "last_conv_layer": "simple_conv_4",
+    },
     "efficientnet_b0": {
         "display_name": "EfficientNet-B0",
         "keras_name": "EfficientNetB0",
@@ -38,6 +45,8 @@ CNN_MODEL_SPECS: dict[str, dict[str, Any]] = {
 }
 
 MODEL_ALIASES = {
+    "simple-cnn": "simple_cnn",
+    "simplecnn": "simple_cnn",
     "efficientnet-b0": "efficientnet_b0",
     "efficientnetb0": "efficientnet_b0",
     "efficientnet-b3": "efficientnet_b3",
@@ -108,6 +117,53 @@ def save_keras_model(model, path: str | Path, metadata: dict) -> Path:
     return path
 
 
+def _require_torch():
+    try:
+        import torch
+        from torchvision import models
+    except ImportError as exc:
+        raise RuntimeError("PyTorch and torchvision are required to load .pt CNN model artifacts.") from exc
+    return torch, models
+
+
+def _build_torch_model(arch: str, num_classes: int = 5):
+    torch, models = _require_torch()
+    if arch == "efficientnet_b0":
+        model = models.efficientnet_b0(weights=None)
+        in_features = model.classifier[1].in_features
+        model.classifier[1] = torch.nn.Linear(in_features, num_classes)
+        input_size = 224
+    else:
+        raise ValueError(f"unsupported PyTorch CNN architecture {arch!r}")
+    return model, input_size
+
+
+def _load_torch_model(path: Path) -> dict:
+    torch, _ = _require_torch()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    checkpoint = torch.load(path, map_location=device, weights_only=False)
+    if not isinstance(checkpoint, dict) or "model_state" not in checkpoint:
+        raise ValueError(f"unsupported PyTorch checkpoint: {path}")
+    arch = str(checkpoint.get("arch") or "efficientnet_b0")
+    model_name = str(checkpoint.get("model_name") or f"{arch}_torch")
+    model, input_size = _build_torch_model(arch, num_classes=len(DR_CLASSES))
+    model.load_state_dict(checkpoint["model_state"])
+    model.to(device)
+    model.eval()
+    return {
+        "kind": "torch_cnn",
+        "model": model,
+        "classes": list(DR_CLASSES),
+        "metadata": {
+            "model_name": model_name,
+            "arch": arch,
+            "input_size": input_size,
+            "device": str(device),
+            "metrics": checkpoint.get("metrics"),
+        },
+    }
+
+
 def load_model(path: str | Path) -> dict:
     path = Path(path)
     if not path.exists():
@@ -135,6 +191,9 @@ def load_model(path: str | Path) -> dict:
             },
         }
 
+    if path.suffix.lower() == ".pt":
+        return _load_torch_model(path)
+
     with path.open("rb") as handle:
         bundle = pickle.load(handle)
     if not isinstance(bundle, dict) or "model" not in bundle:
@@ -143,7 +202,7 @@ def load_model(path: str | Path) -> dict:
 
 
 def predict_probabilities(bundle: dict, feature_vector) -> np.ndarray:
-    if bundle.get("kind") == "keras_cnn":
+    if bundle.get("kind") in {"keras_cnn", "torch_cnn"}:
         return predict_image_probabilities(bundle, feature_vector)
 
     model = bundle["model"]
@@ -165,10 +224,46 @@ def _tf_applications():
 
 
 def get_preprocess_function(model_name: str):
-    applications = _tf_applications()
     canonical = canonical_model_name(model_name)
+    if canonical == "simple_cnn":
+        return lambda image: image / 255.0
+    applications = _tf_applications()
     module = getattr(applications, CNN_MODEL_SPECS[canonical]["preprocess_module"])
     return module.preprocess_input
+
+
+def build_simple_cnn_model(
+    num_classes: int = 5,
+    input_shape: tuple[int, int, int] = (224, 224, 3),
+    learning_rate: float = 1e-4,
+    dropout: float = 0.30,
+):
+    try:
+        import tensorflow as tf
+    except ImportError as exc:
+        raise RuntimeError("TensorFlow is required for simple CNN training.") from exc
+
+    inputs = tf.keras.Input(shape=input_shape)
+    x = tf.keras.layers.Conv2D(16, 3, padding="same", activation="relu", name="simple_conv_1")(inputs)
+    x = tf.keras.layers.BatchNormalization(name="simple_bn_1")(x)
+    x = tf.keras.layers.MaxPooling2D(name="simple_pool_1")(x)
+    x = tf.keras.layers.Conv2D(32, 3, padding="same", activation="relu", name="simple_conv_2")(x)
+    x = tf.keras.layers.BatchNormalization(name="simple_bn_2")(x)
+    x = tf.keras.layers.MaxPooling2D(name="simple_pool_2")(x)
+    x = tf.keras.layers.Conv2D(64, 3, padding="same", activation="relu", name="simple_conv_3")(x)
+    x = tf.keras.layers.BatchNormalization(name="simple_bn_3")(x)
+    x = tf.keras.layers.MaxPooling2D(name="simple_pool_3")(x)
+    x = tf.keras.layers.Conv2D(128, 3, padding="same", activation="relu", name="simple_conv_4")(x)
+    x = tf.keras.layers.GlobalAveragePooling2D(name="global_average_pooling")(x)
+    x = tf.keras.layers.Dropout(dropout, name="dropout")(x)
+    outputs = tf.keras.layers.Dense(num_classes, activation="softmax", dtype="float32", name="severity")(x)
+    model = tf.keras.Model(inputs, outputs, name="simple_cnn")
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
+        loss="sparse_categorical_crossentropy",
+        metrics=["accuracy"],
+    )
+    return model
 
 
 def build_transfer_learning_model(
@@ -189,6 +284,8 @@ def build_transfer_learning_model(
     spec = CNN_MODEL_SPECS[canonical]
     size = int(spec["input_size"])
     input_shape = input_shape or (size, size, 3)
+    if canonical == "simple_cnn":
+        return build_simple_cnn_model(num_classes, input_shape, learning_rate, dropout)
     base_cls = getattr(tf.keras.applications, spec["keras_name"])
     base = base_cls(weights=weights, include_top=False, input_shape=input_shape)
     base.trainable = train_base
@@ -215,7 +312,33 @@ def preprocess_for_model(image_or_path, model_name: str, input_size: int | None 
     return get_preprocess_function(canonical)(batch)
 
 
+def preprocess_for_torch_model(image_or_path, input_size: int = 224):
+    torch, _ = _require_torch()
+    image = preprocess_image(image_or_path, size=input_size).astype("float32") / 255.0
+    mean = np.asarray([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.asarray([0.229, 0.224, 0.225], dtype=np.float32)
+    image = (image - mean) / std
+    return torch.from_numpy(image.transpose(2, 0, 1)).unsqueeze(0)
+
+
+def predict_torch_image_probabilities(bundle: dict, image_or_path) -> np.ndarray:
+    torch, _ = _require_torch()
+    metadata = bundle.get("metadata", {})
+    device = next(bundle["model"].parameters()).device
+    batch = preprocess_for_torch_model(image_or_path, int(metadata.get("input_size", 224))).to(device)
+    with torch.no_grad():
+        logits = bundle["model"](batch)
+        raw = torch.softmax(logits.float(), dim=1)[0].detach().cpu().numpy()
+    probabilities = np.zeros(len(DR_CLASSES), dtype=np.float64)
+    probabilities[: min(len(probabilities), len(raw))] = raw[: len(probabilities)]
+    total = probabilities.sum()
+    return probabilities / total if total > 0 else probabilities
+
+
 def predict_image_probabilities(bundle: dict, image_or_path) -> np.ndarray:
+    if bundle.get("kind") == "torch_cnn":
+        return predict_torch_image_probabilities(bundle, image_or_path)
+
     if bundle.get("kind") != "keras_cnn":
         features = image_or_path
         return predict_probabilities(bundle, features)

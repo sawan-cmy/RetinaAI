@@ -1,10 +1,11 @@
 "use client"
 
-import { AlertTriangle, CheckCircle2, FileImage, Loader2, UploadCloud } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Loader2, UploadCloud } from "lucide-react"
 import { useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { storeScreeningResult } from "@/lib/screening-result"
 
 type ScreeningResult = {
   quality?: { status?: string; reasons?: string[]; blur_score?: number; brightness_score?: number; contrast_score?: number }
@@ -24,18 +25,18 @@ export function AnalysisUploader() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function runAnalysis(file?: File, demo = false) {
+  async function runAnalysis(file: File) {
     setLoading(true)
     setError(null)
+    setResult(null)
     const form = new FormData()
-    if (file) form.append("image", file)
-    if (demo) form.append("demo", "true")
+    form.append("image", file)
 
     try {
       const response = await fetch("/api/screen", { method: "POST", body: form })
       const payload = (await response.json()) as ScreeningResult
       if (!response.ok) throw new Error(payload.error || "Screening failed")
-      window.localStorage.setItem("retinaai-last-screening", JSON.stringify(payload))
+      storeScreeningResult(payload)
       window.dispatchEvent(new Event("retinaai-last-screening-updated"))
       setResult(payload)
     } catch (err) {
@@ -60,16 +61,13 @@ export function AnalysisUploader() {
       <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-lg bg-primary/10 text-primary">
         {loading ? <Loader2 className="h-10 w-10 animate-spin" /> : <UploadCloud className="h-10 w-10" />}
       </div>
-      <h2 className="mt-6 text-2xl font-semibold text-foreground">Drop a retinal fundus image</h2>
+      <h2 className="mt-6 text-2xl font-semibold text-foreground">Upload a retinal fundus image</h2>
       <p className="mt-3 text-sm leading-6 text-muted-foreground">
-        Upload a scan or run demo mode. The pipeline performs quality gating before prediction and routes uncertain cases for review.
+        The frontend only displays results returned by the connected RetinaAI API. No prediction is generated in the browser.
       </p>
-      <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+      <div className="mt-6 flex justify-center">
         <Button onClick={() => inputRef.current?.click()} disabled={loading}>
           <UploadCloud className="h-4 w-4" /> Select image
-        </Button>
-        <Button variant="outline" onClick={() => void runAnalysis(undefined, true)} disabled={loading}>
-          <FileImage className="h-4 w-4" /> Use sample case
         </Button>
       </div>
 
@@ -85,10 +83,10 @@ export function AnalysisUploader() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <CardTitle>Live screening result</CardTitle>
-                <CardDescription>Quality, prediction, routing, and artifacts from the current run.</CardDescription>
+                <CardDescription>Quality, prediction, routing, and artifacts from the current API run.</CardDescription>
               </div>
               <Badge variant={result.uncertainty?.manual_review ? "danger" : "teal"}>
-                {result.uncertainty?.manual_review ? "Manual review" : "AI support ready"}
+                {result.uncertainty?.manual_review ? "Manual review" : "Pipeline output"}
               </Badge>
             </div>
           </CardHeader>
@@ -124,5 +122,3 @@ export function AnalysisUploader() {
     </div>
   )
 }
-
-

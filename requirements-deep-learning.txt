@@ -1,3 +1,6 @@
 # Optional heavy stack for transfer-learning experiments.
 # Install only when you are ready to train CNN models.
 tensorflow
+# Required for PyTorch .pt inference/training; use CUDA wheels or the Docker GPU image for GPU acceleration.
+torch
+torchvision

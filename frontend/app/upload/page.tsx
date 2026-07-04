@@ -1,26 +1,17 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { CheckCircle2, Lock, ShieldAlert } from "lucide-react"
+import { CheckCircle2, Lock, Server, ShieldAlert } from "lucide-react"
 import { AnalysisUploader } from "@/components/analysis-uploader"
 import { AppShell } from "@/components/app-shell"
 import { PageHeader } from "@/components/page-header"
-import { TremorProgress } from "@/components/tremor-progress"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
-
-const qualityChecks = [
-  { label: "Field of view", value: 96 },
-  { label: "Illumination", value: 91 },
-  { label: "Focus sharpness", value: 88 },
-  { label: "Artifact risk", value: 12 },
-]
 
 const uploadSteps = [
-  { title: "Upload", copy: "Encrypted local intake", icon: CheckCircle2 },
-  { title: "Quality", copy: "No blind prediction", icon: ShieldAlert },
-  { title: "Inference", copy: "Manual-review aware", icon: CheckCircle2 },
+  { title: "Upload", copy: "Browser file selection", icon: CheckCircle2 },
+  { title: "Quality", copy: "Returned by API", icon: ShieldAlert },
+  { title: "Inference", copy: "Connected backend only", icon: Server },
 ]
 
 export default function UploadPage() {
@@ -56,39 +47,23 @@ export default function UploadPage() {
         <aside className="space-y-6">
           <Card className="medical-glass">
             <CardHeader>
-              <CardTitle>Quality gate</CardTitle>
-              <CardDescription>Pre-inference screening checks for image reliability.</CardDescription>
+              <CardTitle>Runtime quality metrics</CardTitle>
+              <CardDescription>Scores appear only after the backend processes an uploaded image.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
-              {qualityChecks.map((check) => (
-                <div key={check.label}>
-                  <div className="mb-2 flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{check.label}</span>
-                    <span className="font-medium text-foreground">{check.value}%</span>
-                  </div>
-                  <Progress value={check.value} />
-                </div>
-              ))}
+            <CardContent className="space-y-3 text-sm text-muted-foreground">
+              <p>Blur, brightness, contrast, and retina visibility are returned by FastAPI.</p>
+              <p>No quality score is estimated in the frontend.</p>
             </CardContent>
           </Card>
 
           <Card className="medical-glass">
             <CardHeader>
-              <CardTitle>Screening readiness</CardTitle>
-              <CardDescription>Current intake queue and manual-review status.</CardDescription>
+              <CardTitle>Backend requirement</CardTitle>
+              <CardDescription>The deployed frontend needs a reachable RetinaAI API URL.</CardDescription>
             </CardHeader>
-            <CardContent>
-              <TremorProgress value={82} />
-              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-lg border bg-card p-3">
-                  <p className="text-muted-foreground">Queue</p>
-                  <p className="mt-1 text-xl font-semibold text-foreground">12</p>
-                </div>
-                <div className="rounded-lg border bg-card p-3">
-                  <p className="text-muted-foreground">Manual review</p>
-                  <p className="mt-1 text-xl font-semibold text-foreground">3</p>
-                </div>
-              </div>
+            <CardContent className="space-y-3 text-sm text-muted-foreground">
+              <p>Local development defaults to `http://127.0.0.1:8000`.</p>
+              <p>Vercel previews require `RETINAAI_API_URL`; otherwise uploads fail with a configuration error.</p>
             </CardContent>
           </Card>
         </aside>

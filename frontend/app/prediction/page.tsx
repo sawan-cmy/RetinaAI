@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { readStoredScreeningResult } from "@/lib/screening-result"
 
 type ScreeningResult = {
   quality?: { status?: string; reasons?: string[]; blur_score?: number; brightness_score?: number; contrast_score?: number; retina_visibility_score?: number }
@@ -18,20 +19,11 @@ type ScreeningResult = {
   outputs?: { report_url?: string | null; explanation_url?: string | null; gradcam_url?: string | null }
 }
 
-function readLastScreening(): ScreeningResult | null {
-  try {
-    const stored = window.localStorage.getItem("retinaai-last-screening")
-    return stored ? JSON.parse(stored) as ScreeningResult : null
-  } catch {
-    return null
-  }
-}
-
 export default function PredictionPage() {
   const [result, setResult] = useState<ScreeningResult | null>(null)
 
   useEffect(() => {
-    const update = () => setResult(readLastScreening())
+    const update = () => setResult(readStoredScreeningResult<ScreeningResult>())
     update()
     window.addEventListener("storage", update)
     window.addEventListener("retinaai-last-screening-updated", update)
@@ -87,7 +79,7 @@ export default function PredictionPage() {
                 </div>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Run demo mode or upload an image on the Upload page to populate prediction details.</p>
+              <p className="text-sm text-muted-foreground">Upload an image on the Upload page to populate prediction details from a real API response.</p>
             )}
           </CardContent>
         </Card>
@@ -109,7 +101,7 @@ export default function PredictionPage() {
                 <span className="text-right font-medium text-foreground">{String(value)}</span>
               </div>
             ))}
-            <Badge variant={result?.uncertainty?.manual_review ? "danger" : "teal"}>{result ? "Pipeline connected" : "Awaiting screening"}</Badge>
+            <Badge variant={result?.uncertainty?.manual_review ? "danger" : "teal"}>{result ? "Pipeline connected" : "Awaiting upload"}</Badge>
           </CardContent>
         </Card>
       </div>

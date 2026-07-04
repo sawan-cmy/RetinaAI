@@ -1,4 +1,4 @@
-﻿quality:
+quality:
   min_blur: 20.0
   min_brightness: 25.0
   max_brightness: 235.0
@@ -8,3 +8,15 @@ uncertainty:
   min_confidence: 0.70
   max_entropy: 1.20
   min_top2_margin: 0.15
+sites:
+  aptos_internal:
+    quality:
+      min_blur: 20.0
+      min_brightness: 25.0
+      max_brightness: 235.0
+      min_contrast: 10.0
+      min_retina_visibility: 0.20
+    uncertainty:
+      min_confidence: 0.70
+      max_entropy: 1.20
+      min_top2_margin: 0.15

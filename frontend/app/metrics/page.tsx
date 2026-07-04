@@ -1,22 +1,30 @@
 "use client"
 
 import { FlaskConical, Microscope, ShieldCheck, Sigma } from "lucide-react"
+import { useMemo } from "react"
 import { AppShell } from "@/components/app-shell"
 import { ResearchMetricsChart, SeverityChart } from "@/components/charts"
 import { MetricCard } from "@/components/metric-card"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { chartDataFromMetrics, confusionFromMetrics, severityDataFromMetrics, summaryFromMetrics } from "@/lib/data"
+import { useMetrics } from "@/lib/use-metrics"
 
-const confusion = [
-  [42, 3, 1, 0, 0],
-  [4, 22, 5, 1, 0],
-  [1, 6, 28, 4, 1],
-  [0, 1, 5, 14, 2],
-  [0, 0, 1, 3, 11],
-]
+function sourceLabel(source: "loading" | "generated" | "unavailable") {
+  if (source === "generated") return "Generated metrics"
+  if (source === "loading") return "Loading metrics"
+  return "No generated metrics"
+}
 
 export default function MetricsPage() {
+  const { metrics, source } = useMetrics()
+  const summary = useMemo(() => summaryFromMetrics(metrics), [metrics])
+  const chartData = useMemo(() => chartDataFromMetrics(metrics), [metrics])
+  const severityData = useMemo(() => severityDataFromMetrics(metrics), [metrics])
+  const confusion = useMemo(() => confusionFromMetrics(metrics), [metrics])
+  const label = sourceLabel(source)
+
   return (
     <AppShell>
       <PageHeader
@@ -26,20 +34,23 @@ export default function MetricsPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="AUC" value="0.94" change="Replace with generated comparison" icon={Sigma} />
-        <MetricCard label="Recall" value="0.91" change="Clinical sensitivity target" icon={ShieldCheck} tone="teal" />
-        <MetricCard label="Precision" value="0.88" change="Validation tracking" icon={Microscope} tone="slate" />
-        <MetricCard label="Macro F1" value="0.79" change="Model selection metric" icon={FlaskConical} />
+        <MetricCard label="AUC" value={summary.auc} change={label} icon={Sigma} />
+        <MetricCard label="Recall" value={summary.recall} change="Backend metric" icon={ShieldCheck} tone="teal" />
+        <MetricCard label="Precision" value={summary.precision} change="Backend metric" icon={Microscope} tone="slate" />
+        <MetricCard label="Macro F1" value={summary.f1} change="Backend metric" icon={FlaskConical} />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_420px]">
         <Card className="medical-glass">
-          <CardHeader>
-            <CardTitle>Metric trend</CardTitle>
-            <CardDescription>Baseline compared with transfer-learning candidate metrics.</CardDescription>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle>Metric trend</CardTitle>
+              <CardDescription>Baseline compared with transfer-learning candidate metrics.</CardDescription>
+            </div>
+            <Badge variant={source === "generated" ? "teal" : "slate"}>{label}</Badge>
           </CardHeader>
           <CardContent>
-            <ResearchMetricsChart />
+            <ResearchMetricsChart data={chartData} />
           </CardContent>
         </Card>
 
@@ -49,7 +60,7 @@ export default function MetricsPage() {
             <CardDescription>Distribution across the five diabetic retinopathy screening classes.</CardDescription>
           </CardHeader>
           <CardContent>
-            <SeverityChart />
+            <SeverityChart data={severityData} />
           </CardContent>
         </Card>
       </div>
@@ -60,29 +71,35 @@ export default function MetricsPage() {
             <CardTitle>Confusion matrix</CardTitle>
             <CardDescription>Compact view of ordinal grading behavior across five DR classes.</CardDescription>
           </div>
-          <Badge variant="teal">Validation set</Badge>
+          <Badge variant={source === "generated" && confusion ? "teal" : "slate"}>{confusion ? "Generated artifact" : "No generated matrix"}</Badge>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-2 overflow-x-auto">
-            <div className="grid min-w-[520px] grid-cols-[90px_repeat(5,1fr)] gap-2 text-center text-xs text-muted-foreground">
-              <div />
-              {["No DR", "Mild", "Moderate", "Severe", "PDR"].map((label) => <div key={label}>{label}</div>)}
-              {confusion.map((row, rowIndex) => (
-                <div key={`row-${rowIndex}`} className="contents">
-                  <div className="flex items-center justify-end pr-2 font-medium text-foreground">Class {rowIndex}</div>
-                  {row.map((value, colIndex) => (
-                    <div
-                      key={`${rowIndex}-${colIndex}`}
-                      className="rounded-lg border p-4 font-semibold text-foreground"
-                      style={{ background: `color-mix(in srgb, var(--primary) ${Math.min(72, value * 2)}%, var(--card))` }}
-                    >
-                      {value}
-                    </div>
-                  ))}
-                </div>
-              ))}
+          {confusion ? (
+            <div className="grid gap-2 overflow-x-auto">
+              <div className="grid min-w-[520px] grid-cols-[90px_repeat(5,1fr)] gap-2 text-center text-xs text-muted-foreground">
+                <div />
+                {["No DR", "Mild", "Moderate", "Severe", "PDR"].map((classLabel) => <div key={classLabel}>{classLabel}</div>)}
+                {confusion.map((row, rowIndex) => (
+                  <div key={`row-${rowIndex}`} className="contents">
+                    <div className="flex items-center justify-end pr-2 font-medium text-foreground">Class {rowIndex}</div>
+                    {row.map((value, colIndex) => (
+                      <div
+                        key={`${rowIndex}-${colIndex}`}
+                        className="rounded-lg border p-4 font-semibold text-foreground"
+                        style={{ background: `color-mix(in srgb, var(--primary) ${Math.min(72, value * 2)}%, var(--card))` }}
+                      >
+                        {value}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
+              Run model comparison and expose `/metrics` from the backend to show a confusion matrix.
+            </div>
+          )}
         </CardContent>
       </Card>
     </AppShell>

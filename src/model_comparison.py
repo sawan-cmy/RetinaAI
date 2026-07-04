@@ -157,6 +157,10 @@ def compare_models(
                 out_dir=out_dir,
                 epochs=epochs,
                 batch_size=batch_size,
+                dataset_name=dataset,
+                labels_csv=labels_csv,
+                image_dir=image_dir,
+                deployment_site=dataset,
             )
             rows.append(_flat_row(normalized, metrics, None, metrics.get("model_path")))
         except Exception as exc:

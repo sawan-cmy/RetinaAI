@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { readStoredScreeningResult } from "@/lib/screening-result"
 
 type ScreeningResult = {
   prediction?: { class_name?: string | null; confidence?: number | null }
@@ -16,20 +17,11 @@ type ScreeningResult = {
   outputs?: { explanation_url?: string | null; gradcam_url?: string | null }
 }
 
-function readLast(): ScreeningResult | null {
-  try {
-    const stored = window.localStorage.getItem("retinaai-last-screening")
-    return stored ? JSON.parse(stored) as ScreeningResult : null
-  } catch {
-    return null
-  }
-}
-
 export default function GradCamPage() {
   const [result, setResult] = useState<ScreeningResult | null>(null)
 
   useEffect(() => {
-    const update = () => setResult(readLast())
+    const update = () => setResult(readStoredScreeningResult<ScreeningResult>())
     update()
     window.addEventListener("storage", update)
     window.addEventListener("retinaai-last-screening-updated", update)
@@ -57,7 +49,7 @@ export default function GradCamPage() {
               <CardTitle>Fundus scan overlay</CardTitle>
               <CardDescription>Generated artifact from the latest connected screening run.</CardDescription>
             </div>
-            <Badge variant={gradcamUrl ? "teal" : "slate"}>{gradcamUrl ? "Available" : "Awaiting screening"}</Badge>
+            <Badge variant={gradcamUrl ? "teal" : "slate"}>{gradcamUrl ? "Available" : "Awaiting upload"}</Badge>
           </CardHeader>
           <CardContent>
             <div className="relative mx-auto grid aspect-[16/10] max-w-4xl place-items-center overflow-hidden rounded-lg border bg-muted">
@@ -66,7 +58,7 @@ export default function GradCamPage() {
               ) : (
                 <div className="p-8 text-center text-sm text-muted-foreground">
                   <Layers className="mx-auto mb-3 h-8 w-8 text-secondary" />
-                  Run a screening from Upload to generate a Grad-CAM or unavailable-explanation artifact.
+                  Upload an image to generate a Grad-CAM or unavailable-explanation artifact from the API.
                 </div>
               )}
             </div>
@@ -77,7 +69,7 @@ export default function GradCamPage() {
           <ConfidenceGauge
             label={result?.prediction?.class_name || "No screening loaded"}
             value={typeof result?.prediction?.confidence === "number" ? Math.round(result.prediction.confidence * 100) : 0}
-            sublabel={result?.uncertainty?.reason || "Run Upload to populate explainability context"}
+            sublabel={result?.uncertainty?.reason || "Upload an image to populate explainability context"}
             className="medical-glass"
           />
 

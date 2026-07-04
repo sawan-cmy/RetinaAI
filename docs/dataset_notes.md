@@ -23,4 +23,4 @@ Project labels:
 - 3: Severe DR
 - 4: Proliferative DR
 
-External datasets must document source labels, mapping, access rules, and license constraints before metrics are reported. Internal test metrics and external validation metrics must stay separate.
+External datasets must document source labels, mapping, access rules, and license constraints before metrics are reported. Internal test metrics and external validation metrics must stay separate. Reusable mappings live in `configs/label_mappings/`, and external validation writes per-site calibration artifacts under `reports/external_validation/`.

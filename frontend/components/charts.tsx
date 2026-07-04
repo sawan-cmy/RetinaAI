@@ -5,10 +5,24 @@ import { caseTimeline, researchMetrics, severityData } from "@/lib/data"
 
 const colors = ["#2563EB", "#14B8A6", "#60A5FA", "#F59E0B", "#F43F5E"]
 
-export function CaseVolumeChart() {
+type CaseTimelinePoint = typeof caseTimeline[number]
+type SeverityPoint = typeof severityData[number]
+type ResearchMetricPoint = typeof researchMetrics[number]
+
+function EmptyChart({ message }: { message: string }) {
+  return (
+    <div className="grid h-[250px] place-items-center rounded-lg border bg-card p-6 text-center text-sm text-muted-foreground">
+      {message}
+    </div>
+  )
+}
+
+export function CaseVolumeChart({ data = caseTimeline }: { data?: CaseTimelinePoint[] }) {
+  if (!data.length) return <EmptyChart message="No generated case-volume data is loaded." />
+
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <AreaChart data={caseTimeline} margin={{ left: -20, right: 10, top: 10, bottom: 0 }}>
+      <AreaChart data={data} margin={{ left: -20, right: 10, top: 10, bottom: 0 }}>
         <defs>
           <linearGradient id="screened" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="#2563EB" stopOpacity={0.36} />
@@ -30,26 +44,30 @@ export function CaseVolumeChart() {
   )
 }
 
-export function SeverityChart() {
+export function SeverityChart({ data = severityData }: { data?: SeverityPoint[] }) {
+  if (!data.length) return <EmptyChart message="No generated severity distribution is loaded." />
+
   return (
     <ResponsiveContainer width="100%" height={250}>
-      <BarChart data={severityData} margin={{ left: -20, right: 10, top: 10, bottom: 0 }}>
+      <BarChart data={data} margin={{ left: -20, right: 10, top: 10, bottom: 0 }}>
         <CartesianGrid stroke="var(--border)" vertical={false} />
         <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} />
         <YAxis tickLine={false} axisLine={false} tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} />
         <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12 }} />
         <Bar dataKey="value" radius={[10, 10, 4, 4]}>
-          {severityData.map((entry, index) => <Cell key={entry.label} fill={colors[index % colors.length]} />)}
+          {data.map((entry, index) => <Cell key={entry.label} fill={colors[index % colors.length]} />)}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
   )
 }
 
-export function ResearchMetricsChart() {
+export function ResearchMetricsChart({ data = researchMetrics }: { data?: ResearchMetricPoint[] }) {
+  if (!data.length) return <EmptyChart message="No generated comparison metrics are loaded." />
+
   return (
     <ResponsiveContainer width="100%" height={280}>
-      <LineChart data={researchMetrics} margin={{ left: -20, right: 10, top: 10, bottom: 0 }}>
+      <LineChart data={data} margin={{ left: -20, right: 10, top: 10, bottom: 0 }}>
         <CartesianGrid stroke="var(--border)" vertical={false} />
         <XAxis dataKey="metric" tickLine={false} axisLine={false} tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} />
         <YAxis domain={[0.6, 1]} tickLine={false} axisLine={false} tick={{ fill: "var(--muted-foreground)", fontSize: 12 }} />

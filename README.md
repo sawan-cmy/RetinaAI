@@ -1,8 +1,43 @@
 # RetinaAI
 
-RetinaAI is an uncertainty-aware retinal screening platform for diabetic retinopathy severity grading. It combines image quality gating, transfer-learning CNN support, Grad-CAM explainability, uncertainty routing, FastAPI inference, a professional Next.js dashboard, and hospital-style PDF reports.
+RetinaAI is a high-fidelity, deep learning computer vision pipeline engineered for real-time medical screening, automated clinical triaging, and diagnostic decision support using retinal fundus photography.
 
-This is a screening prototype, not a diagnostic medical device. A qualified medical professional must review every output before care decisions.
+> [!WARNING]
+> This is a screening prototype, not a diagnostic medical device. A qualified medical professional must review every output before clinical care decisions.
+
+## 🎯 The Core Problem & Product Utility
+
+In traditional clinical environments within India, diagnosing sight-threatening eye conditions requires heavy, static desktop fundus cameras costing anywhere from ₹12 Lakhs to ₹75 Lakhs+. Because of this massive financial barrier, rural clinics, tier-3 cities, and community medical camps cannot afford proper screening equipment. Furthermore, reading these scans demands an on-call, highly specialized ophthalmologist—creating a massive logistical bottleneck.
+
+RetinaAI bridges this economic and infrastructural gap:
+
+- **Real-Time Clinical Triaging**: Instead of forcing hundreds of routine screening scans to sit in an unread queue for days, the system acts as a real-time digital assistant. It instantly screens images, maps anomalies, and flags high-priority critical cases (e.g., active retinal hemorrhages) so doctors can treat urgent patients first.
+- **Democratizing Public Healthcare**: By keeping the software entirely hardware-agnostic, medical operations can pair RetinaAI with highly portable, mass-accessible smartphone lenses. A field nurse in a remote village can use an ultra-low-cost clip-on lens like the D-Eye (₹30,000 - ₹35,000) or a clinical hand-held phone system like the Remidio FOP (₹3.5 Lakhs - ₹4.2 Lakhs) to snap a high-res photo on an ordinary phone, upload it to our pipeline, and receive an instant diagnostic baseline.
+- **Objective Quantification**: Eliminates human diagnostic drift and cognitive fatigue during exhausting 12-hour hospital shifts by outputting an unbiased, stable mathematical probability matrix.
+
+## ⚙️ Technical Capabilities
+
+- **Automated Image Quality Gating & Preprocessing**:
+  - Automatically assesses input fundus photos to reject blurry, low-contrast, or artifact-heavy uploads using luminance and gradient-based checks ([quality_check.py](file:///c:/Users/sawan/Desktop/new_project/RetinaAI/src/quality_check.py)).
+  - Automated black-border cropping and aspect-ratio-preserving resizing to normalize clinical inputs from varied camera types.
+- **Multi-Model Deep Learning Pipeline**:
+  - Leverages advanced Transfer Learning CNN architectures: **EfficientNet-B0**, **EfficientNet-B3**, and **ResNet50** for robust diabetic retinopathy grading.
+  - Multi-dataset loader abstraction supporting diverse standard formats (**APTOS 2019**, **EyePACS**, **Messidor**, and **IDRiD**-style label schemas).
+  - Built-in fail-safe fallback: Automatically routes predictions to a baseline **scikit-learn Random Forest** classifier if deep learning checkpoints are missing or invalid, preventing system crashes during runtime.
+- **Explainable AI (XAI) & Anomaly Mapping**:
+  - Computes and renders **Grad-CAM (Gradient-weighted Class Activation Mapping)** heatmaps to highlight pathology-indicative regions (e.g. hemorrhages, microaneurysms, and exudates).
+  - Clean explanation fallbacks showing descriptive "Not Available" visual overlays when executing the non-convolutional baseline models.
+- **Uncertainty-Aware Routing & Clinical Triaging**:
+  - Analyzes prediction confidence, predictive entropy, and top-2 class margin.
+  - Flags and routes highly uncertain predictions or failed quality checks for manual ophthalmologist review.
+- **Full-Stack Diagnostics Dashboard & Reports**:
+  - Professional Next.js (TypeScript) web-dashboard for real-time patient queue viewing, uploading, Grad-CAM visualization, and historical analytics.
+  - Automated, hospital-style PDF report generator detailing patient metrics, predictions, confidence scoring, Grad-CAM overlay plots, clinical action recommendations, and standard regulatory disclaimers.
+- **Production-Ready & Secure Core**:
+  - FastAPI-powered backend exposing high-performance endpoints with role-based API-key authentication (`viewer`, `clinician`, `admin`).
+  - Persistent SQLite databases for case history tracking.
+  - Fully containerized ecosystem using Docker and Docker Compose for seamless localized or cloud deployment.
+
 
 ## Architecture
 
@@ -47,6 +82,13 @@ Optional CNN training stack:
 pip install -r requirements-deep-learning.txt
 ```
 
+Optional PDF inspection stack:
+
+```powershell
+pip install pdfplumber pypdf
+# Install Poppler separately so `pdftoppm` is available for visual PDF rendering.
+```
+
 Frontend:
 
 ```powershell
@@ -58,7 +100,7 @@ npm install
 
 Supported dataset names: `aptos`, `aptos2019`, `eyepacs`, `messidor`, `idrid`.
 
-The loader is configurable and expects a CSV with an image id column and label column. Built-in column candidates cover common layouts, and custom label mappings can be passed for external validation.
+The loader is configurable and expects a CSV with an image id column and label column. Built-in column candidates cover common layouts, and reusable label mappings live under `configs/label_mappings/`.
 
 APTOS example:
 
@@ -90,7 +132,11 @@ python -m src.train --model efficientnet_b3 --labels-csv data/raw/aptos2019/trai
 python -m src.train --model resnet50 --labels-csv data/raw/aptos2019/train.csv --image-dir data/raw/aptos2019/images_288_scaled
 ```
 
-CNN training supports checkpoints, early stopping, mixed precision, learning-rate reduction, class weighting, and reproducible seeds through `configs/train.yaml`.
+CNN training supports checkpoints, early stopping, mixed precision, learning-rate reduction, class weighting, and reproducible seeds through `configs/train.yaml`. Each completed training run writes metrics, calibration curves, tuned site thresholds, a model card, a dataset card, and a ZIP metrics package.
+
+## GPU Notes
+
+An RTX 3050 can train these models, but TensorFlow 2.21 on native Windows does not use CUDA GPUs. Use WSL2 with NVIDIA CUDA support, or a compatible DirectML setup, before expecting GPU acceleration.
 
 ## Evaluation
 
@@ -108,10 +154,21 @@ Outputs:
 - `reports/figures/model_comparison.png`
 - `reports/figures/confusion_matrix_best_model.png`
 
-External validation:
+External validation with documented mappings:
 
 ```powershell
-python -m src.external_validation --dataset messidor --model models/efficientnet_b0.keras --labels-csv data/external/messidor/labels.csv --image-dir data/external/messidor/images --label-map '{"0":0,"1":1,"2":2,"3":4}'
+python -m src.external_validation --dataset eyepacs --model models/efficientnet_b0.keras --labels-csv data/external/eyepacs/labels.csv --image-dir data/external/eyepacs/images --label-map configs/label_mappings/eyepacs_5class.json --site eyepacs_site
+python -m src.external_validation --dataset messidor --model models/efficientnet_b0.keras --labels-csv data/external/messidor/labels.csv --image-dir data/external/messidor/images --label-map configs/label_mappings/messidor_retinopathy_grade_0_3.json --site messidor_site
+python -m src.external_validation --dataset idrid --model models/efficientnet_b0.keras --labels-csv data/external/idrid/labels.csv --image-dir data/external/idrid/images --label-map configs/label_mappings/idrid_5class.json --site idrid_site
+```
+
+External validation writes separate metrics, prediction rows, calibration curves, and tuned thresholds under `reports/external_validation/`.
+
+Calibration and packaging can also be run directly:
+
+```powershell
+python -m src.calibration --predictions reports/external_validation/eyepacs_predictions.csv --site eyepacs_site --model efficientnet_b0
+python -m src.artifact_package --model efficientnet_b0
 ```
 
 ## Inference
@@ -119,7 +176,7 @@ python -m src.external_validation --dataset messidor --model models/efficientnet
 CLI:
 
 ```powershell
-python -m src.inference --image tests/_self_check/synthetic_retina.png --model models/efficientnet_b0.keras --fallback-model models/baseline_sklearn.pkl
+python -m src.inference --image tests/_self_check/synthetic_retina.png --model models/efficientnet_b0.keras --fallback-model models/baseline_sklearn.pkl --site-id aptos_internal
 ```
 
 If the CNN is missing, inference does not crash. It falls back to the random-forest baseline when available, routes uncertain cases to manual review, creates an explicit Grad-CAM-unavailable image, and still generates a PDF report.
@@ -139,10 +196,14 @@ Endpoints:
 - `POST /quality`
 - `POST /gradcam`
 - `POST /report`
+- `GET /cases`
+- `GET /cases/{run_id}`
 - `GET /metrics`
 - `GET /models`
 
 OpenAPI docs: `http://127.0.0.1:8000/docs`.
+
+Case history is stored server-side in `reports/case_history.sqlite3`. Set `RETINAAI_API_KEYS` to enable API-key roles, for example `{"viewer-key":"viewer","clinician-key":"clinician","admin-key":"admin"}`. When unset, local development runs as `admin`.
 
 ## Frontend
 
@@ -153,6 +214,10 @@ npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
 Pages: Dashboard, Upload, Prediction, Grad-CAM Viewer, Metrics, Reports, Settings, Model Comparison, History.
+
+## Vercel Preview
+
+The frontend can be deployed to Vercel from `frontend/`. The preview build is useful for sharing dashboard, metrics, reports, and history screens. Upload/demo screening requires `RETINAAI_API_URL` to point at a deployed FastAPI backend.
 
 ## Docker
 
@@ -176,7 +241,7 @@ Frontend: `http://127.0.0.1:3000`  API: `http://127.0.0.1:8000`.
 ```powershell
 python tests/self_check.py
 python -m pytest
-python -m py_compile app/streamlit_app.py src/*.py tests/*.py
+python -m compileall -q app src tests
 cd frontend
 npm run lint
 npm run typecheck
@@ -196,24 +261,22 @@ Add other current screenshots under `docs/screenshots/` after running the app:
 
 ## Results
 
-The repository contains generated baseline comparison artifacts from earlier runs. Regenerate all current metrics with `python -m src.model_comparison` before reporting numbers. Do not publish metrics that were not produced by the pipeline.
+The repository contains generated baseline comparison artifacts from earlier runs. Regenerate all current metrics with `python -m src.model_comparison` before reporting numbers. Do not publish metrics that were not produced by the pipeline. Training and validation artifacts are written under `reports/calibration/`, `reports/cards/`, `reports/external_validation/`, and `reports/packages/`.
 
 ## Limitations
 
 - No CNN checkpoint is committed; train one locally with TensorFlow before claiming CNN performance.
 - Grad-CAM is real only for trained CNN artifacts. Baseline fallback produces an explicit unavailable explanation image.
-- Quality gating is heuristic and should be calibrated on target camera hardware.
-- External validation depends on dataset-specific label mapping and access/license constraints.
-- Browser history is local-only; production audit logging should persist server-side.
+- Site thresholds are only as good as the site validation set used to tune them.
+- External validation depends on dataset access/license constraints and verified source label schemas.
+- Role-based access control is API-key based for this prototype; production PHI handling still needs secure secret management, transport policy, retention policy, and audit review.
 
 ## Future Work
 
-- Add calibration curves and threshold tuning per deployment site.
-- Add server-side case history storage and role-based access controls.
-- Validate on EyePACS, Messidor, and IDRiD with documented mappings.
-- Add model card and dataset card artifacts for each trained checkpoint.
-- Package screenshots and final metrics after a full CNN training run.
+- Run full CNN training on the target hardware/GPU budget and archive the produced checkpoint package.
+- Add production identity provider integration and encrypted case/report storage.
+- Add prospective clinical validation once retrospective EyePACS, Messidor, and IDRiD runs are complete.
 
 ## Resume Bullet
 
-Built an uncertainty-aware retinal screening platform using EfficientNet/ResNet transfer learning support, image quality gates, Grad-CAM explainability, FastAPI inference, Next.js clinical dashboard, PDF reports, model comparison, external validation hooks, Docker, CI, and automated tests.
+Built an uncertainty-aware retinal screening platform using EfficientNet/ResNet transfer learning support, image quality gates, Grad-CAM explainability, FastAPI inference, Next.js clinical dashboard, PDF reports, model comparison, external validation hooks, calibration and threshold tuning artifacts, server-side case history, API-key RBAC, model/dataset cards, run packaging, Docker, CI, and automated tests.

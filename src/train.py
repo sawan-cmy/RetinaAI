@@ -10,14 +10,16 @@ import numpy as np
 import yaml
 from sklearn.utils.class_weight import compute_class_weight
 
-from .datasets import class_distribution, load_labels, split_dataframe
+from .artifact_package import package_training_run
+from .calibration import write_calibration_artifacts
+from .cards import write_dataset_card, write_model_card
+from .datasets import DATASET_SPECS, class_distribution, load_labels, split_dataframe
 from .evaluate import calculate_metrics, plot_confusion_matrix, save_metrics
 from .models import (
     CNN_MODEL_SPECS,
     build_transfer_learning_model,
     canonical_model_name,
     get_preprocess_function,
-    predict_image_probabilities,
     predict_probabilities,
     save_keras_model,
     save_model,
@@ -75,6 +77,38 @@ def _make_tf_dataset(df, model_name: str, batch_size: int, shuffle: bool, seed: 
     return dataset.map(_load, num_parallel_calls=tf.data.AUTOTUNE).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
 
+def _finalize_artifacts(
+    model_name: str,
+    model_path: str | Path,
+    metrics: dict,
+    y_true,
+    probabilities,
+    dataset_name: str,
+    labels_csv: str | Path | None,
+    image_dir: str | Path | None,
+    label_mapping: dict | None,
+    checkpoint_path: str | Path | None = None,
+    deployment_site: str | None = None,
+) -> dict:
+    site = deployment_site or dataset_name
+    calibration = write_calibration_artifacts(y_true, probabilities, site=site, model_name=model_name)
+    metrics["calibration_artifacts"] = calibration
+    distributions = {
+        "train": metrics.get("train_distribution"),
+        "validation": metrics.get("validation_distribution"),
+        "test": metrics.get("test_distribution"),
+    }
+    dataset_card = write_dataset_card(dataset_name, labels_csv, image_dir, distributions, label_mapping)
+    model_card = write_model_card(model_name, model_path, metrics, dataset_name, checkpoint_path=checkpoint_path, calibration_artifacts=calibration)
+    metrics["dataset_card_path"] = str(dataset_card)
+    metrics["model_card_path"] = str(model_card)
+    metrics_path = save_metrics(metrics, f"reports/metrics_{model_name}.json")
+    metrics["metrics_path"] = str(metrics_path)
+    metrics["package_path"] = str(package_training_run(model_name))
+    save_metrics(metrics, metrics_path)
+    return metrics
+
+
 def train_cnn_from_dataframe(
     train_df,
     val_df,
@@ -88,6 +122,11 @@ def train_cnn_from_dataframe(
     learning_rate: float = 1e-4,
     mixed_precision: bool = True,
     train_base: bool = False,
+    dataset_name: str = "unknown",
+    labels_csv: str | Path | None = None,
+    image_dir: str | Path | None = None,
+    label_mapping: dict | None = None,
+    deployment_site: str | None = None,
 ) -> dict:
     tf = _require_tensorflow()
     canonical = canonical_model_name(model_name)
@@ -154,7 +193,19 @@ def train_cnn_from_dataframe(
     (out_dir / f"{canonical}_history.json").write_text(json.dumps(history.history, indent=2, default=float), encoding="utf-8")
     metrics["model_path"] = str(final_path)
     metrics["checkpoint_path"] = str(checkpoint_path)
-    return metrics
+    return _finalize_artifacts(
+        canonical,
+        final_path,
+        metrics,
+        y_true,
+        probabilities,
+        dataset_name,
+        labels_csv,
+        image_dir,
+        label_mapping,
+        checkpoint_path=checkpoint_path,
+        deployment_site=deployment_site,
+    )
 
 
 def train_from_dataset(
@@ -170,10 +221,14 @@ def train_from_dataset(
     split_cfg = config.get("split", {})
     training_cfg = config.get("training", {})
     model_cfg = config.get("model", {})
+    dataset_cfg = config.get("dataset", {})
 
     seed = int(split_cfg.get("seed", training_cfg.get("seed", 42)))
     set_reproducible_seed(seed)
-    df = load_labels(labels_csv, image_dir, dataset=dataset, label_mapping=model_cfg.get("label_mapping"))
+    label_mapping = model_cfg.get("label_mapping") or dataset_cfg.get("label_mapping")
+    if label_mapping is None:
+        label_mapping = dict(DATASET_SPECS.get(dataset.lower(), DATASET_SPECS["aptos"]).label_mapping)
+    df = load_labels(labels_csv, image_dir, dataset=dataset, label_mapping=label_mapping)
     if max_images:
         df = df.sample(n=min(max_images, len(df)), random_state=seed).reset_index(drop=True)
 
@@ -184,6 +239,7 @@ def train_from_dataset(
         seed=seed,
     )
 
+    deployment_site = str(dataset_cfg.get("deployment_site") or dataset)
     selected = model_name.lower()
     if selected in {"baseline", "baseline_sklearn", "random_forest", "rf"}:
         x_train = _features(train_df["path"])
@@ -205,11 +261,20 @@ def train_from_dataset(
         metrics["test_distribution"] = class_distribution(test_df)
         out_dir = Path(out_dir)
         model_path = save_model(bundle, out_dir / "baseline_sklearn.pkl")
-        metrics_path = save_metrics(metrics, "reports/metrics_baseline_sklearn.json")
         plot_confusion_matrix(metrics["confusion_matrix"], "reports/figures/confusion_matrix_baseline_sklearn.png")
         metrics["model_path"] = str(model_path)
-        metrics["metrics_path"] = str(metrics_path)
-        return metrics
+        return _finalize_artifacts(
+            "baseline_sklearn",
+            model_path,
+            metrics,
+            y_test,
+            probabilities,
+            dataset,
+            labels_csv,
+            image_dir,
+            label_mapping,
+            deployment_site=deployment_site,
+        )
 
     return train_cnn_from_dataframe(
         train_df,
@@ -224,6 +289,11 @@ def train_from_dataset(
         learning_rate=float(training_cfg.get("learning_rate", 1e-4)),
         mixed_precision=bool(training_cfg.get("mixed_precision", True)),
         train_base=bool(model_cfg.get("train_base", False)),
+        dataset_name=dataset,
+        labels_csv=labels_csv,
+        image_dir=image_dir,
+        label_mapping=label_mapping,
+        deployment_site=deployment_site,
     )
 
 
@@ -237,7 +307,7 @@ def main() -> int:
     parser.add_argument("--labels-csv", default="data/raw/aptos2019/train.csv")
     parser.add_argument("--image-dir", default="data/raw/aptos2019/images_288_scaled")
     parser.add_argument("--dataset", default="aptos")
-    parser.add_argument("--model", default=None, help="baseline_sklearn, efficientnet_b0, efficientnet_b3, or resnet50")
+    parser.add_argument("--model", default=None, help="baseline_sklearn, simple_cnn, efficientnet_b0, efficientnet_b3, or resnet50")
     parser.add_argument("--out-dir", default="models")
     parser.add_argument("--max-images", type=int, default=None)
     args = parser.parse_args()

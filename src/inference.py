@@ -8,7 +8,7 @@ from time import perf_counter
 from uuid import uuid4
 
 from .constants import DR_CLASSES
-from .gradcam import GradCamUnavailable, generate_keras_gradcam, save_unavailable_explanation
+from .gradcam import GradCamUnavailable, generate_keras_gradcam, generate_torch_gradcam, save_unavailable_explanation
 from .models import load_model, predict_image_probabilities, predict_probabilities
 from .preprocessing import extract_handcrafted_features
 from .quality_check import assess_quality, load_quality_thresholds
@@ -64,11 +64,12 @@ def _active_model_path(model_path: Path, fallback_model_path: Path | None) -> tu
 
 def screen_retina_image(
     image_path: str | Path,
-    model_path: str | Path = "models/efficientnet_b0.keras",
+    model_path: str | Path = "models/efficientnet_b0_torch_transfer_acc.pt",
     thresholds_path: str | Path = "configs/thresholds.yaml",
     output_dir: str | Path = "reports/sample_reports",
     fallback_model_path: str | Path | None = "models/baseline_sklearn.pkl",
     patient_id: str | None = None,
+    site_id: str | None = None,
 ) -> dict:
     image_path = Path(image_path)
     model_path = Path(model_path)
@@ -77,7 +78,7 @@ def screen_retina_image(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     generated_at = datetime.now().isoformat(timespec="seconds")
-    quality = assess_quality(image_path, load_quality_thresholds(thresholds_path)).to_dict()
+    quality = assess_quality(image_path, load_quality_thresholds(thresholds_path, site_id=site_id)).to_dict()
     probabilities = None
     unavailable_reason = "model_missing"
     latency_ms = None
@@ -107,7 +108,7 @@ def screen_retina_image(
             started = perf_counter()
             bundle = load_model(active_model)
             model_info["kind"] = bundle.get("kind", "unknown")
-            if bundle.get("kind") == "keras_cnn":
+            if bundle.get("kind") in {"keras_cnn", "torch_cnn"}:
                 probabilities = predict_image_probabilities(bundle, image_path)
             else:
                 features = extract_handcrafted_features(image_path)
@@ -142,7 +143,7 @@ def screen_retina_image(
     uncertainty = route_case(
         quality["status"],
         probabilities,
-        load_uncertainty_thresholds(thresholds_path),
+        load_uncertainty_thresholds(thresholds_path, site_id=site_id),
         unavailable_reason=unavailable_reason,
     )
     recommendation = _recommendation(quality, prediction, uncertainty)
@@ -152,10 +153,8 @@ def screen_retina_image(
     if prediction["status"] in {"available", "available_fallback_baseline"} and active_model is not None:
         try:
             bundle = load_model(active_model)
-            if bundle.get("kind") != "keras_cnn":
-                save_unavailable_explanation(image_path, gradcam_path, "Grad-CAM requires CNN checkpoint; baseline used")
-            else:
-                metadata = bundle.get("metadata", {})
+            metadata = bundle.get("metadata", {})
+            if bundle.get("kind") == "keras_cnn":
                 generate_keras_gradcam(
                     bundle["model"],
                     image_path,
@@ -165,6 +164,17 @@ def screen_retina_image(
                     size=int(metadata.get("input_size", 224)),
                     model_name=metadata.get("model_name", "efficientnet_b0"),
                 )
+            elif bundle.get("kind") == "torch_cnn":
+                generate_torch_gradcam(
+                    bundle["model"],
+                    image_path,
+                    metadata.get("last_conv_layer"),
+                    gradcam_path,
+                    class_index=prediction["class_id"],
+                    size=int(metadata.get("input_size", 224)),
+                )
+            else:
+                save_unavailable_explanation(image_path, gradcam_path, "Grad-CAM requires CNN checkpoint; baseline used")
         except (GradCamUnavailable, Exception) as exc:
             save_unavailable_explanation(image_path, gradcam_path, f"Grad-CAM unavailable: {exc}")
     else:
@@ -174,6 +184,7 @@ def screen_retina_image(
         "metadata": {
             "run_id": run_id,
             "patient_id": patient_id,
+            "site_id": site_id,
             "generated_at": generated_at,
         },
         "preprocessing": {
@@ -202,11 +213,12 @@ def screen_retina_image(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run RetinaAI screening inference on one image.")
     parser.add_argument("--image", required=True, help="Path to retinal image")
-    parser.add_argument("--model", default="models/efficientnet_b0.keras")
+    parser.add_argument("--model", default="models/efficientnet_b0_torch_transfer_acc.pt")
     parser.add_argument("--fallback-model", default="models/baseline_sklearn.pkl")
     parser.add_argument("--thresholds", default="configs/thresholds.yaml")
     parser.add_argument("--output-dir", default="reports/sample_reports")
     parser.add_argument("--patient-id", default=None)
+    parser.add_argument("--site-id", default=None)
     args = parser.parse_args()
 
     result = screen_retina_image(
@@ -216,6 +228,7 @@ def main() -> int:
         thresholds_path=args.thresholds,
         output_dir=args.output_dir,
         patient_id=args.patient_id,
+        site_id=args.site_id,
     )
     print(json.dumps(result, indent=2))
     return 0

@@ -1,0 +1,6 @@
+sites:
+  aptos_smoke:
+    uncertainty:
+      min_confidence: 0.0
+      max_entropy: 1.599768
+      min_top2_margin: 0.0

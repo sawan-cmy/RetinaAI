@@ -72,6 +72,21 @@ def find_last_conv_layer(model) -> str:
     raise GradCamUnavailable("Could not find a convolutional feature layer for Grad-CAM.")
 
 
+def find_last_torch_conv_layer(model) -> str:
+    try:
+        import torch
+    except ImportError as exc:
+        raise GradCamUnavailable("PyTorch is not installed, so CNN Grad-CAM cannot run.") from exc
+
+    last_name = None
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Conv2d):
+            last_name = name
+    if last_name is None:
+        raise GradCamUnavailable("Could not find a convolutional feature layer for PyTorch Grad-CAM.")
+    return last_name
+
+
 def generate_keras_gradcam(
     model,
     image_or_path,
@@ -107,4 +122,67 @@ def generate_keras_gradcam(
     pooled_gradients = tf.reduce_mean(gradients, axis=(0, 1, 2))
     conv_outputs = conv_outputs[0]
     heatmap = tf.reduce_sum(conv_outputs * pooled_gradients, axis=-1).numpy()
+    return overlay_heatmap(image_or_path, heatmap, output_path)
+
+
+def generate_torch_gradcam(
+    model,
+    image_or_path,
+    last_conv_layer_name: str | None,
+    output_path: str | Path,
+    class_index: int | None = None,
+    size: int = 224,
+) -> Path:
+    try:
+        import torch
+    except ImportError as exc:
+        raise GradCamUnavailable("PyTorch is not installed, so CNN Grad-CAM cannot run.") from exc
+
+    from .models import preprocess_for_torch_model
+
+    modules = dict(model.named_modules())
+    last_conv_layer_name = last_conv_layer_name or find_last_torch_conv_layer(model)
+    conv_layer = modules.get(last_conv_layer_name)
+    if conv_layer is None:
+        raise GradCamUnavailable(f"Model has no layer named {last_conv_layer_name!r}.")
+
+    try:
+        device = next(model.parameters()).device
+    except StopIteration:
+        device = torch.device("cpu")
+
+    activation = None
+
+    def capture_activation(_module, _inputs, output):
+        nonlocal activation
+        activation = output
+        activation.retain_grad()
+
+    handle = conv_layer.register_forward_hook(capture_activation)
+    was_training = model.training
+    try:
+        model.eval()
+        model.zero_grad(set_to_none=True)
+        batch = preprocess_for_torch_model(image_or_path, size).to(device)
+        with torch.enable_grad():
+            predictions = model(batch)
+            if isinstance(predictions, (list, tuple)):
+                predictions = predictions[0]
+            if predictions.ndim == 1:
+                predictions = predictions.unsqueeze(0)
+            if class_index is None:
+                class_index = int(torch.argmax(predictions[0]).item())
+            predictions[:, class_index].sum().backward()
+
+        if activation is None or activation.grad is None:
+            raise GradCamUnavailable("Could not compute gradients for PyTorch Grad-CAM.")
+        feature_map = activation.detach()[0]
+        gradients = activation.grad.detach()[0]
+        weights = gradients.mean(dim=(1, 2), keepdim=True)
+        heatmap = torch.relu((feature_map * weights).sum(dim=0)).cpu().numpy()
+    finally:
+        handle.remove()
+        model.zero_grad(set_to_none=True)
+        model.train(was_training)
+
     return overlay_heatmap(image_or_path, heatmap, output_path)

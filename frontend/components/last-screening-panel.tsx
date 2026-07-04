@@ -3,6 +3,7 @@
 import { useMemo, useSyncExternalStore } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { LAST_SCREENING_KEY, readStoredScreeningResult } from "@/lib/screening-result"
 
 type ScreeningResult = {
   quality?: { status?: string }
@@ -21,7 +22,7 @@ function subscribe(callback: () => void) {
 }
 
 function getSnapshot() {
-  return window.localStorage.getItem("retinaai-last-screening")
+  return window.localStorage.getItem(LAST_SCREENING_KEY)
 }
 
 function getServerSnapshot() {
@@ -30,21 +31,14 @@ function getServerSnapshot() {
 
 export function LastScreeningPanel() {
   const stored = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
-  const result = useMemo(() => {
-    if (!stored) return null
-    try {
-      return JSON.parse(stored) as ScreeningResult
-    } catch {
-      return null
-    }
-  }, [stored])
+  const result = useMemo(() => stored ? readStoredScreeningResult<ScreeningResult>() : null, [stored])
 
   if (!result) {
     return (
       <Card className="medical-glass mt-6">
         <CardHeader>
           <CardTitle>Latest connected screening</CardTitle>
-          <CardDescription>Run demo mode or upload an image on the Upload page to populate this panel.</CardDescription>
+          <CardDescription>Upload an image on the Upload page to populate this panel from a real API response.</CardDescription>
         </CardHeader>
       </Card>
     )
@@ -58,7 +52,7 @@ export function LastScreeningPanel() {
           <CardDescription>Persisted locally from the upload API response.</CardDescription>
         </div>
         <Badge variant={result.uncertainty?.manual_review ? "danger" : "teal"}>
-          {result.uncertainty?.manual_review ? "Manual review" : "AI support ready"}
+          {result.uncertainty?.manual_review ? "Manual review" : "Pipeline output"}
         </Badge>
       </CardHeader>
       <CardContent className="grid gap-4 md:grid-cols-4">

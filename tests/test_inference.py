@@ -29,3 +29,32 @@ def test_inference_uses_baseline_fallback(synthetic_retina, work_dir):
     assert result["model"]["fallback_mode"] is True
     assert result["prediction"]["status"] == "available_fallback_baseline"
     assert len(result["prediction"]["probabilities"]) == 5
+
+
+def test_inference_uses_torch_gradcam_for_pt_models(synthetic_retina, work_dir, monkeypatch):
+    model_path = work_dir / "model.pt"
+    model_path.write_bytes(b"placeholder")
+    calls = []
+    fake_model = object()
+
+    def fake_load_model(_path):
+        return {
+            "kind": "torch_cnn",
+            "model": fake_model,
+            "metadata": {"input_size": 96, "last_conv_layer": "features.0"},
+        }
+
+    def fake_generate_torch_gradcam(model, image_path, last_conv_layer_name, output_path, class_index=None, size=224):
+        calls.append((model, image_path, last_conv_layer_name, class_index, size))
+        Path(output_path).write_bytes(b"torch gradcam")
+        return Path(output_path)
+
+    monkeypatch.setattr("src.inference.load_model", fake_load_model)
+    monkeypatch.setattr("src.inference.predict_image_probabilities", lambda _bundle, _image: np.asarray([0.91, 0.03, 0.02, 0.02, 0.02]))
+    monkeypatch.setattr("src.inference.generate_torch_gradcam", fake_generate_torch_gradcam)
+
+    result = screen_retina_image(synthetic_retina, model_path=model_path, fallback_model_path=None, output_dir=work_dir / "reports")
+
+    assert result["model"]["kind"] == "torch_cnn"
+    assert result["prediction"]["status"] == "available"
+    assert calls == [(fake_model, synthetic_retina, "features.0", 0, 96)]

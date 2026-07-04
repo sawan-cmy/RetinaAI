@@ -4,8 +4,7 @@ import path from "node:path"
 
 export const runtime = "nodejs"
 
-const projectRoot = path.join(/*turbopackIgnore: true*/ process.cwd(), "..")
-const reportsRoot = path.join(projectRoot, "reports")
+const reportsRoot = path.resolve(process.env.RETINAAI_REPORTS_DIR || path.join(/*turbopackIgnore: true*/ process.cwd(), "reports"))
 const mimeTypes: Record<string, string> = {
   ".pdf": "application/pdf",
   ".png": "image/png",
@@ -34,5 +33,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Artifact not found." }, { status: 404 })
   }
 }
-
-

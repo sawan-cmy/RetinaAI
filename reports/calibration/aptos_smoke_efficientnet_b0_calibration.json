@@ -1,0 +1,101 @@
+{
+  "site": "aptos_smoke",
+  "model_name": "efficientnet_b0",
+  "calibration": {
+    "n": 5,
+    "n_bins": 10,
+    "ece": 0.156663,
+    "bins": [
+      {
+        "bin_low": 0.0,
+        "bin_high": 0.1,
+        "count": 0,
+        "mean_confidence": null,
+        "accuracy": null
+      },
+      {
+        "bin_low": 0.1,
+        "bin_high": 0.2,
+        "count": 0,
+        "mean_confidence": null,
+        "accuracy": null
+      },
+      {
+        "bin_low": 0.2,
+        "bin_high": 0.3,
+        "count": 4,
+        "mean_confidence": 0.271054,
+        "accuracy": 0.25
+      },
+      {
+        "bin_low": 0.3,
+        "bin_high": 0.4,
+        "count": 1,
+        "mean_confidence": 0.300902,
+        "accuracy": 1.0
+      },
+      {
+        "bin_low": 0.4,
+        "bin_high": 0.5,
+        "count": 0,
+        "mean_confidence": null,
+        "accuracy": null
+      },
+      {
+        "bin_low": 0.5,
+        "bin_high": 0.6,
+        "count": 0,
+        "mean_confidence": null,
+        "accuracy": null
+      },
+      {
+        "bin_low": 0.6,
+        "bin_high": 0.7,
+        "count": 0,
+        "mean_confidence": null,
+        "accuracy": null
+      },
+      {
+        "bin_low": 0.7,
+        "bin_high": 0.8,
+        "count": 0,
+        "mean_confidence": null,
+        "accuracy": null
+      },
+      {
+        "bin_low": 0.8,
+        "bin_high": 0.9,
+        "count": 0,
+        "mean_confidence": null,
+        "accuracy": null
+      },
+      {
+        "bin_low": 0.9,
+        "bin_high": 1.0,
+        "count": 0,
+        "mean_confidence": null,
+        "accuracy": null
+      }
+    ]
+  },
+  "threshold_tuning": {
+    "site": "aptos_smoke",
+    "status": "target_met",
+    "target_max_false_negative_rate_any_dr": 0.05,
+    "thresholds": {
+      "min_confidence": 0.0,
+      "max_entropy": 1.599768,
+      "min_top2_margin": 0.0
+    },
+    "operating_point": {
+      "review_rate": 0.0,
+      "auto_release_rate": 1.0,
+      "auto_false_negative_rate_any_dr": 0.0,
+      "auto_accuracy": 0.4,
+      "auto_released_count": 5,
+      "manual_review_count": 0,
+      "positive_count": 3
+    },
+    "candidate_count": 343
+  }
+}

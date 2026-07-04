@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { readStoredScreeningResult } from "@/lib/screening-result"
 
 type ScreeningResult = {
   metadata?: { patient_id?: string | null; generated_at?: string; run_id?: string }
@@ -17,20 +18,11 @@ type ScreeningResult = {
   outputs?: { report_url?: string | null; explanation_url?: string | null }
 }
 
-function readLast(): ScreeningResult | null {
-  try {
-    const stored = window.localStorage.getItem("retinaai-last-screening")
-    return stored ? JSON.parse(stored) as ScreeningResult : null
-  } catch {
-    return null
-  }
-}
-
 export default function ReportsPage() {
   const [result, setResult] = useState<ScreeningResult | null>(null)
 
   useEffect(() => {
-    const update = () => setResult(readLast())
+    const update = () => setResult(readStoredScreeningResult<ScreeningResult>())
     update()
     window.addEventListener("storage", update)
     window.addEventListener("retinaai-last-screening-updated", update)
@@ -46,7 +38,7 @@ export default function ReportsPage() {
     ["Quality", result?.quality?.status || "not available"],
     ["Prediction", result?.prediction?.class_name || result?.prediction?.status || "not available"],
     ["Confidence", typeof result?.prediction?.confidence === "number" ? `${Math.round(result.prediction.confidence * 100)}%` : "not available"],
-    ["Uncertainty", `Entropy ${result?.uncertainty?.entropy ?? "n/a"} / Margin ${result?.uncertainty?.margin ?? "n/a"}`],
+    ["Uncertainty", result ? `Entropy ${result.uncertainty?.entropy ?? "n/a"} / Margin ${result.uncertainty?.margin ?? "n/a"}` : "not available"],
   ]
 
   return (
@@ -69,7 +61,7 @@ export default function ReportsPage() {
                 <h2 className="mt-4 text-3xl font-semibold text-slate-950">Retinal screening support summary</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-600">Prototype output for qualified clinical review. This report is not a clinical diagnosis.</p>
               </div>
-              <Badge variant={result ? "teal" : "slate"} className="bg-slate-100 text-slate-700">{result ? "Generated" : "Awaiting scan"}</Badge>
+              <Badge variant={result ? "teal" : "slate"} className="bg-slate-100 text-slate-700">{result ? "Generated" : "Awaiting upload"}</Badge>
             </div>
 
             <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -84,7 +76,7 @@ export default function ReportsPage() {
             <div className="mt-8 rounded-lg bg-slate-50 p-5">
               <h3 className="font-semibold text-slate-950">Recommendation</h3>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                {result?.recommendation?.text || "Run a screening from Upload to generate report recommendations and artifact links."}
+                {result?.recommendation?.text || "Upload an image to generate report recommendations and artifact links from the API."}
               </p>
             </div>
           </div>

@@ -7,11 +7,12 @@ Client upload (Next.js or FastAPI)
 -> src.models.load_model
    -> Keras CNN artifact: EfficientNet-B0, EfficientNet-B3, ResNet50
    -> fallback sklearn RandomForest baseline
--> src.uncertainty.route_case
+-> src.uncertainty.route_case with optional deployment-site thresholds
 -> src.gradcam.generate_keras_gradcam for CNNs
    -> src.gradcam.save_unavailable_explanation for missing/non-CNN models
 -> src.inference._recommendation
 -> src.report_generator.generate_report
+-> src.case_store.save_case for server-side history
 ```
 
 Stable Python entry point:
@@ -36,7 +37,7 @@ Frontend:
 - `frontend/app/metrics/page.tsx`: Evaluation metrics
 - `frontend/app/model-comparison/page.tsx`: Model comparison
 - `frontend/app/reports/page.tsx`: PDF report viewer
-- `frontend/app/history/page.tsx`: Local screening history
+- `frontend/app/history/page.tsx`: Server case history with local fallback
 - `frontend/app/settings/page.tsx`: Safety settings UI
 
 The random forest remains a fallback baseline. CNN artifacts are selected by model path/config and should be trained with `src.train`.

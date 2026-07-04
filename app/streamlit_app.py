@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import sys
@@ -23,7 +23,7 @@ st.caption("Uncertainty-aware explainable retinal screening prototype")
 st.warning(DISCLAIMER)
 
 uploaded = st.file_uploader("Upload retinal fundus image", type=["png", "jpg", "jpeg", "tif", "tiff"])
-model_path = st.sidebar.text_input("Model path", "models/baseline_sklearn.pkl")
+model_path = st.sidebar.text_input("Model path", "models/efficientnet_b0_torch_transfer_acc.pt")
 thresholds_path = st.sidebar.text_input("Thresholds path", "configs/thresholds.yaml")
 
 if uploaded:

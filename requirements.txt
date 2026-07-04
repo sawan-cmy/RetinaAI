@@ -1,6 +1,6 @@
 numpy
 pillow
-opencv-python
+opencv-python-headless
 scikit-learn
 pandas
 matplotlib

@@ -1,67 +1,69 @@
 # Project Audit
 
-Date: 2026-07-01
+Date: 2026-07-02
 
 ## Audit Scope
 
-Reviewed source, configuration, docs, tests, frontend app code, package metadata, Docker setup, and generated artifact locations. Vendor/build/raw-data directories were identified but not hand-audited as source: `frontend/node_modules`, `frontend/.next`, `data/raw`, Python `__pycache__`, generated reports, and generated test outputs.
+Reviewed repository source, configuration, docs, tests, frontend app code, package metadata, Docker setup, CI, generated artifact paths, and current git state. Vendor/build/raw-data/generated directories were identified but not hand-audited as source: `frontend/node_modules`, `frontend/.next`, `.keras-cache`, `data/raw`, Python `__pycache__`, generated reports, generated model artifacts, and generated test outputs.
 
 ## Findings Before Fixes
 
-- CNN model support was a stub; only the random-forest handcrafted-feature baseline was trainable.
-- Dataset loading was APTOS-specific and did not support external label mapping.
-- Grad-CAM could only be manually called for an externally supplied Keras model; inference always wrote unavailable placeholders.
-- Inference was baseline-first and did not expose model fallback metadata, recommendation text, or latency.
-- Model comparison trained only random-forest variants and did not emit the requested `comparison.*` artifacts.
-- No FastAPI production backend existed.
-- PDF reports were plain and missed patient ID, recommendation, uncertainty detail, and hospital-style layout.
-- Frontend contained a polished but partially static dashboard, older Vite scaffold files, generated `.next` output, and fake/static model names.
-- Next API route shelled out to Python; this was fragile for production builds.
-- Test coverage was mostly a single self-check script.
-- Docker only ran Streamlit, not the production API/frontend architecture.
-- CI, pre-commit, typecheck, and Playwright test wiring were missing.
-- Git is not initialized in this workspace, so file-level changed-state tracking is unavailable.
+- Random forest existed as a baseline, but the production pipeline needed CNN training, model comparison, external validation, calibration, and artifact packaging connected end to end.
+- Dataset loading had to support APTOS, EyePACS, Messidor, and IDRiD-style label schemas instead of assuming APTOS only.
+- Grad-CAM needed to be generated from CNN checkpoints and fall back explicitly when unavailable.
+- Inference needed to route through preprocessing, quality gate, model selection, fallback, uncertainty, recommendation, Grad-CAM, and PDF report without crashing on missing/corrupt models.
+- FastAPI, case history, role-aware API keys, frontend proxying, Docker, CI, pre-commit, and frontend e2e checks needed production wiring.
+- The frontend had professional pages, but metrics/model-comparison views still used static fallback values even when backend metrics artifacts existed.
+- The frontend artifact API compared a resolved file path against a non-resolved reports root on Windows, causing valid artifact reads to be rejected.
+- `PROJECT_AUDIT.md` had stale text claiming git was unavailable; this workspace is a git repo with a dirty worktree and generated artifacts.
 
 ## Fixed
 
-- Added generic dataset abstraction in `src.datasets` for APTOS, EyePACS, Messidor, and IDRiD-style CSVs with label mapping.
-- Implemented TensorFlow/Keras transfer-learning model factory for EfficientNet-B0, EfficientNet-B3, and ResNet50.
-- Added checkpoint metadata saving/loading for Keras `.keras` artifacts.
-- Added reproducible seeds, class weighting, early stopping, mixed precision, and learning-rate scheduling in `src.train`.
-- Preserved the random forest as a fallback baseline.
-- Implemented real Keras Grad-CAM heatmap generation and overlay saving for CNNs.
-- Upgraded inference to run quality gate, model selection, fallback, confidence, entropy, top-2 margin, Grad-CAM/unavailable artifact, recommendation, latency, and PDF report.
-- Added FastAPI backend with `/predict`, `/quality`, `/gradcam`, `/report`, `/metrics`, `/models`, `/health`, and OpenAPI docs.
-- Added external validation command in `src.external_validation`.
-- Updated model comparison to write `reports/comparison.csv`, `reports/comparison.json`, `reports/comparison.png`, plus legacy model comparison outputs.
-- Upgraded PDF reporting with patient ID, date, quality metrics, prediction, confidence, uncertainty, Grad-CAM, recommendation, disclaimer, and hospital-style formatting.
-- Replaced landing-style frontend root with a professional healthcare dashboard.
-- Added requested frontend pages: Dashboard, Upload, Prediction, Grad-CAM Viewer, Metrics, Reports, Settings, Model Comparison, History.
-- Reworked frontend upload route to proxy to FastAPI instead of spawning Python.
-- Removed active unsupported model names and decorative gradient/orb styling from the app surface.
-- Added pytest coverage for preprocessing, quality, training, inference, Grad-CAM, uncertainty, and FastAPI.
-- Added Playwright e2e navigation test.
-- Added Dockerfile, frontend Dockerfile, Docker Compose, GitHub Actions, pre-commit config, pyproject tooling, and dev requirements.
-- Rewrote README and updated architecture, dataset, and label-mapping docs.
+- Added dataset abstraction in `src.datasets` for APTOS, APTOS 2019, EyePACS, Messidor, and IDRiD-style CSVs with reusable label mapping files.
+- Implemented TensorFlow/Keras transfer-learning support for EfficientNet-B0, EfficientNet-B3, and ResNet50 while preserving the random forest as a baseline/fallback.
+- Added checkpoint saving, metadata saving/loading, reproducible seeds, class weighting, early stopping, mixed precision, and learning-rate reduction in `src.train`.
+- Implemented Keras Grad-CAM heatmap generation and overlay saving for CNN artifacts, with explicit unavailable explanation images for fallback/missing models.
+- Upgraded inference to run quality gate, CNN or fallback prediction, confidence, predictive entropy, top-2 margin, recommendation, latency capture, Grad-CAM/explanation artifact, and PDF report generation.
+- Added calibration and site-threshold tuning artifacts, model cards, dataset cards, and training artifact packaging.
+- Added model comparison output: `reports/comparison.csv`, `reports/comparison.json`, `reports/comparison.png`, model-comparison aliases, metrics, latency, training time, AUC, F1, and false-negative rate.
+- Added external validation command for supported datasets with label mapping and per-site calibration output.
+- Added FastAPI endpoints for `/health`, `/predict`, `/quality`, `/gradcam`, `/report`, `/metrics`, `/models`, `/cases`, `/cases/{run_id}`, and report artifacts.
+- Added server-side case history through SQLite and API-key role handling for viewer/clinician/admin workflows.
+- Upgraded PDF reports with patient ID, date, quality metrics, prediction, confidence, uncertainty, Grad-CAM/explanation, recommendation, disclaimer, and hospital-style layout.
+- Reworked the frontend into a Next.js healthcare dashboard with Upload, Prediction, Grad-CAM, Metrics, Reports, Settings, Model Comparison, and History pages.
+- Replaced Python shelling from the frontend upload path with a FastAPI proxy route.
+- Added a frontend `/api/metrics` proxy and wired Metrics and Model Comparison pages to generated backend metrics with explicit fallback display when no metrics artifact exists.
+- Fixed the frontend artifact API reports-root resolution bug and added a Playwright regression test for serving allowed report files and blocking traversal.
+- Added pytest coverage for preprocessing, quality, training baseline, inference fallback, Grad-CAM overlay behavior, uncertainty routing, calibration, case storage, and FastAPI endpoints.
+- Added Playwright e2e coverage for dashboard navigation and artifact API behavior.
+- Added Docker, Docker Compose, GitHub Actions, lint/typecheck/build/e2e checks, pre-commit hooks, and updated README/docs.
+
+## Verification
+
+- `python -m pytest` passed: 21 tests.
+- `python tests/self_check.py` passed.
+- `python -m compileall -q app src tests` exited successfully; local generated temp directories under `tests` still print access-denied listing warnings.
+- `npm run lint` passed.
+- `npm run typecheck` passed.
+- `npm run build` passed outside the sandbox after the sandbox produced `spawn EPERM`.
+- `npm run test:e2e` passed outside the sandbox: 2 Playwright tests.
 
 ## Remaining Issues
 
-- No trained CNN checkpoint is committed. TensorFlow is optional and absent in the current local environment, so CNN training was implemented but not executed here.
-- Current committed model artifacts are random-forest baselines only.
-- Grad-CAM will produce real heatmaps only after a CNN artifact is trained and available.
-- Frontend metrics cards still use fallback display values until `reports/comparison.json` is generated and wired into a live metrics API view.
-- Browser history is localStorage-only; production audit trails should be server-side.
-- `frontend/src` still contains legacy Vite scaffold files. They are not active in the Next app but remain because the request said to keep current modules.
-- Generated/vendor/data artifacts are present in the workspace (`frontend/node_modules`, `.next`, raw images, old reports). Ignore rules now cover them, but cleanup should be done deliberately in a real git repo.
-- PDF layout was generated and smoke-tested, but Poppler rendering was not available for visual PDF page inspection in this environment.
+- No trained CNN checkpoint is committed. TensorFlow is optional in the base setup, so CNN training support is implemented but full EfficientNet/ResNet training was not executed here.
+- Grad-CAM produces real heatmaps only after a trained CNN artifact is available; baseline fallback intentionally produces an unavailable-explanation image.
+- Current committed/generated model artifacts are local baseline/smoke artifacts and should not be treated as publishable clinical performance evidence.
+- Frontend Metrics and Model Comparison pages now consume `/metrics`, but they still show static fallback values when the FastAPI backend is unreachable or no comparison artifact exists.
+- `frontend/src` still contains legacy Vite scaffold files. They are inactive in the Next app and kept because the request said to keep current modules.
+- Generated/cache artifacts are present in the workspace, including `.keras-cache`, `models`, `reports`, `frontend/.next`, and access-restricted old pytest temp directories. Cleanup should be deliberate and separate from this upgrade.
+- PDF layout is smoke-tested through report generation, but Poppler-based visual PDF rendering is not configured in this environment.
+- Prototype API-key auth and SQLite storage are not sufficient for real PHI production deployment without identity, encryption, retention, and audit controls.
 
 ## Suggested Future Improvements
 
-- Train and compare EfficientNet-B0, EfficientNet-B3, and ResNet50 on the full dataset with TensorFlow installed.
-- Add calibration curves, decision-curve analysis, and threshold tuning for deployment-specific cameras.
-- Persist cases, reports, model versions, and audit events in a database.
-- Add authentication, role-based access, PHI handling policy, and secure storage before any real clinical deployment.
-- Add model cards and dataset cards for every trained artifact.
-- Wire frontend Metrics and Model Comparison pages directly to `/metrics` with generated artifacts.
-- Render representative PDFs to PNG in CI when Poppler is available.
-- Remove legacy Vite scaffold files after confirming no one depends on them.
+- Train EfficientNet-B0, EfficientNet-B3, and ResNet50 on the full target dataset with TensorFlow/GPU support, then regenerate comparison, calibration, model-card, dataset-card, and package artifacts.
+- Run external validation for EyePACS, Messidor, and IDRiD with verified source label schemas and site/camera-specific thresholds.
+- Add CI PDF render checks when Poppler is available.
+- Replace prototype API-key auth with a production identity provider and encrypted case/report storage before handling real clinical data.
+- Remove legacy Vite scaffold files and generated temp/cache directories in a dedicated cleanup change once stakeholders confirm they are not needed.
+- Add live model promotion governance around signed artifacts, model version pinning, rollback, and audit events.

@@ -16,14 +16,45 @@ class DatasetSpec:
     image_id_columns: tuple[str, ...]
     label_columns: tuple[str, ...]
     label_mapping: Mapping[int | str, int] = field(default_factory=dict)
+    mapping_notes: str = ""
 
 
 DATASET_SPECS: dict[str, DatasetSpec] = {
-    "aptos": DatasetSpec("aptos", ("id_code", "image", "image_id"), ("diagnosis", "label"), {}),
-    "aptos2019": DatasetSpec("aptos2019", ("id_code", "image", "image_id"), ("diagnosis", "label"), {}),
-    "eyepacs": DatasetSpec("eyepacs", ("image", "image_id", "id_code"), ("level", "diagnosis", "label"), {}),
-    "messidor": DatasetSpec("messidor", ("image", "image_id", "id_code"), ("diagnosis", "grade", "label"), {}),
-    "idrid": DatasetSpec("idrid", ("image", "image_id", "id_code"), ("diagnosis", "grade", "label"), {}),
+    "aptos": DatasetSpec(
+        "aptos",
+        ("id_code", "image", "image_id"),
+        ("diagnosis", "label"),
+        {0: 0, 1: 1, 2: 2, 3: 3, 4: 4},
+        "APTOS 0-4 diabetic retinopathy grade.",
+    ),
+    "aptos2019": DatasetSpec(
+        "aptos2019",
+        ("id_code", "image", "image_id"),
+        ("diagnosis", "label"),
+        {0: 0, 1: 1, 2: 2, 3: 3, 4: 4},
+        "APTOS 2019 0-4 diabetic retinopathy grade.",
+    ),
+    "eyepacs": DatasetSpec(
+        "eyepacs",
+        ("image", "image_id", "id_code"),
+        ("level", "diagnosis", "label"),
+        {0: 0, 1: 1, 2: 2, 3: 3, 4: 4},
+        "EyePACS/Kaggle 0-4 diabetic retinopathy severity grade.",
+    ),
+    "messidor": DatasetSpec(
+        "messidor",
+        ("image", "image_id", "id_code"),
+        ("diagnosis", "grade", "label"),
+        {0: 0, 1: 1, 2: 2, 3: 4},
+        "Messidor retinopathy grade 0-3 mapped to project 0,1,2,4; override when the source CSV uses another schema.",
+    ),
+    "idrid": DatasetSpec(
+        "idrid",
+        ("image", "image_id", "id_code"),
+        ("diagnosis", "grade", "label"),
+        {0: 0, 1: 1, 2: 2, 3: 3, 4: 4},
+        "IDRiD disease grading 0-4 diabetic retinopathy severity grade.",
+    ),
 }
 
 
@@ -115,6 +146,18 @@ def load_labels(
 
 def load_aptos_labels(csv_path: str | Path, image_dir: str | Path) -> pd.DataFrame:
     return load_labels(csv_path, image_dir, dataset="aptos")
+
+
+def dataset_mapping_documentation() -> dict[str, dict]:
+    return {
+        name: {
+            "image_id_columns": list(spec.image_id_columns),
+            "label_columns": list(spec.label_columns),
+            "label_mapping": {str(key): int(value) for key, value in spec.label_mapping.items()},
+            "notes": spec.mapping_notes,
+        }
+        for name, spec in DATASET_SPECS.items()
+    }
 
 
 def class_distribution(df: pd.DataFrame, label_col: str = "label") -> dict[int, int]:
