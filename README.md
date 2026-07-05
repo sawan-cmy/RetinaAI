@@ -176,7 +176,7 @@ python -m src.artifact_package --model efficientnet_b0
 CLI:
 
 ```powershell
-python -m src.inference --image tests/_self_check/synthetic_retina.png --model models/efficientnet_b0.keras --fallback-model models/baseline_sklearn.pkl --site-id aptos_internal
+python -m src.inference --image tests/_self_check/synthetic_retina.png --model models/efficientnet_b0_torch_transfer_acc.pt --fallback-model models/baseline_sklearn.pkl --site-id aptos_internal
 ```
 
 If the CNN is missing, inference does not crash. It falls back to the random-forest baseline when available, routes uncertain cases to manual review, creates an explicit Grad-CAM-unavailable image, and still generates a PDF report.
@@ -261,11 +261,11 @@ Add other current screenshots under `docs/screenshots/` after running the app:
 
 ## Results
 
-The repository contains generated baseline comparison artifacts from earlier runs. Regenerate all current metrics with `python -m src.model_comparison` before reporting numbers. Do not publish metrics that were not produced by the pipeline. Training and validation artifacts are written under `reports/calibration/`, `reports/cards/`, `reports/external_validation/`, and `reports/packages/`.
+The current local primary model is `models/efficientnet_b0_torch_transfer_acc.pt`, an EfficientNet-B0 PyTorch checkpoint with test accuracy `0.823315` in `reports/metrics_efficientnet_b0_torch_transfer_acc.json`. `reports/comparison.json` selects it over the Random Forest fallback. Do not publish metrics that were not produced by the pipeline. Training and validation artifacts are written under `reports/calibration/`, `reports/cards/`, `reports/external_validation/`, and `reports/packages/`.
 
 ## Limitations
 
-- No CNN checkpoint is committed; train one locally with TensorFlow before claiming CNN performance.
+- The local primary CNN checkpoint is `models/efficientnet_b0_torch_transfer_acc.pt`; Random Forest is only the fallback when the CNN artifact or PyTorch runtime is unavailable.
 - Grad-CAM is real only for trained CNN artifacts. Baseline fallback produces an explicit unavailable explanation image.
 - Site thresholds are only as good as the site validation set used to tune them.
 - External validation depends on dataset access/license constraints and verified source label schemas.

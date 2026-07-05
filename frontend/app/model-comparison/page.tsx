@@ -29,7 +29,7 @@ export default function ModelComparisonPage() {
   const { metrics, source } = useMetrics()
   const rows = useMemo(() => rowsFromMetrics(metrics), [metrics])
   const chartData = useMemo(() => chartDataFromMetrics(metrics), [metrics])
-  const bestModel = metrics?.best_model ? displayModelName(metrics.best_model) : "pending"
+  const bestModel = metrics?.best_model || metrics?.model_name ? displayModelName(metrics.best_model || metrics.model_name || undefined) : "pending"
   const label = sourceLabel(source)
 
   return (

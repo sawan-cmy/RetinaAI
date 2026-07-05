@@ -29,6 +29,7 @@ export type ModelMetric = {
 export type MetricsPayload = {
   status?: string
   best_model?: string | null
+  model_name?: string | null
   models?: ModelMetric[]
   accuracy?: number | null
   macro_precision?: number | null
@@ -52,6 +53,8 @@ export function displayModelName(name?: string) {
   const names: Record<string, string> = {
     baseline_sklearn: "Random Forest Baseline",
     efficientnet_b0: "EfficientNet-B0",
+    efficientnet_b0_torch_transfer: "EfficientNet-B0 Torch",
+    efficientnet_b0_torch_transfer_acc: "EfficientNet-B0 Torch",
     efficientnet_b3: "EfficientNet-B3",
     resnet50: "ResNet50",
   }
@@ -72,8 +75,9 @@ export function rowsFromMetrics(metrics: MetricsPayload | null) {
       status: row.status || "trained",
     }))
   }
+  const modelName = metrics.model_name || metrics.best_model || "generated_model"
   return [{
-    name: "Random Forest Baseline",
+    name: displayModelName(modelName),
     accuracy: formatMetric(metrics.accuracy),
     precision: formatMetric(metrics.macro_precision),
     recall: formatMetric(metrics.macro_recall),
