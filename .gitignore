@@ -5,6 +5,7 @@ __pycache__/
 .env.*
 !.env.example
 .DS_Store
+logs/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -30,6 +31,8 @@ reports/api_reports/
 reports/frontend_uploads/
 reports/frontend_reports/
 reports/runtime/
+reports/pdf_render_check_v2/
+reports/demo_inputs/
 reports/case_history.sqlite3
 tests/_generated/
 tests/_pytest_tmp/

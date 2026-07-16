@@ -1,6 +1,6 @@
 # RetinaAI
 
-RetinaAI is a high-fidelity, deep learning computer vision pipeline engineered for real-time medical screening, automated clinical triaging, and diagnostic decision support using retinal fundus photography.
+RetinaAI is a high-fidelity, deep learning computer vision pipeline engineered for retinal screening workflow support, uncertainty-aware triage, and clinical decision-support research using retinal fundus photography.
 
 > [!WARNING]
 > This is a screening prototype, not a diagnostic medical device. A qualified medical professional must review every output before clinical care decisions.
@@ -11,9 +11,9 @@ In traditional clinical environments within India, diagnosing sight-threatening 
 
 RetinaAI bridges this economic and infrastructural gap:
 
-- **Real-Time Clinical Triaging**: Instead of forcing hundreds of routine screening scans to sit in an unread queue for days, the system acts as a real-time digital assistant. It instantly screens images, maps anomalies, and flags high-priority critical cases (e.g., active retinal hemorrhages) so doctors can treat urgent patients first.
-- **Democratizing Public Healthcare**: By keeping the software entirely hardware-agnostic, medical operations can pair RetinaAI with highly portable, mass-accessible smartphone lenses. A field nurse in a remote village can use an ultra-low-cost clip-on lens like the D-Eye (₹30,000 - ₹35,000) or a clinical hand-held phone system like the Remidio FOP (₹3.5 Lakhs - ₹4.2 Lakhs) to snap a high-res photo on an ordinary phone, upload it to our pipeline, and receive an instant diagnostic baseline.
-- **Objective Quantification**: Eliminates human diagnostic drift and cognitive fatigue during exhausting 12-hour hospital shifts by outputting an unbiased, stable mathematical probability matrix.
+- **Real-Time Clinical Triaging**: Instead of forcing hundreds of routine screening scans to sit in an unread queue for days, the system acts as a real-time digital assistant. It screens images, checks quality, and flags outputs that need manual review or referral workflow attention so clinicians can prioritize review queues.
+- **Democratizing Public Healthcare**: By keeping the software entirely hardware-agnostic, medical operations can pair RetinaAI with highly portable, mass-accessible smartphone lenses. A field nurse in a remote village can use an ultra-low-cost clip-on lens like the D-Eye (₹30,000 - ₹35,000) or a clinical hand-held phone system like the Remidio FOP (₹3.5 Lakhs - ₹4.2 Lakhs) to snap a high-res photo on an ordinary phone, upload it to our pipeline, and receive an instant screening summary for clinician review.
+- **Objective Quantification**: Supports consistent screening workflow review by outputting a stable model probability matrix with uncertainty routing.
 
 ## ⚙️ Technical Capabilities
 
@@ -24,15 +24,15 @@ RetinaAI bridges this economic and infrastructural gap:
   - Leverages advanced Transfer Learning CNN architectures: **EfficientNet-B0**, **EfficientNet-B3**, and **ResNet50** for robust diabetic retinopathy grading.
   - Multi-dataset loader abstraction supporting diverse standard formats (**APTOS 2019**, **EyePACS**, **Messidor**, and **IDRiD**-style label schemas).
   - Built-in fail-safe fallback: Automatically routes predictions to a baseline **scikit-learn Random Forest** classifier if deep learning checkpoints are missing or invalid, preventing system crashes during runtime.
-- **Explainable AI (XAI) & Anomaly Mapping**:
-  - Computes and renders **Grad-CAM (Gradient-weighted Class Activation Mapping)** heatmaps to highlight pathology-indicative regions (e.g. hemorrhages, microaneurysms, and exudates).
+- **Explainable AI (XAI) & Model Explanation**:
+  - Computes and renders **Grad-CAM (Gradient-weighted Class Activation Mapping)** overlays for CNN artifacts. Highlighted regions influenced model output; they are not verified lesion locations.
   - Clean explanation fallbacks showing descriptive "Not Available" visual overlays when executing the non-convolutional baseline models.
 - **Uncertainty-Aware Routing & Clinical Triaging**:
   - Analyzes prediction confidence, predictive entropy, and top-2 class margin.
   - Flags and routes highly uncertain predictions or failed quality checks for manual ophthalmologist review.
 - **Full-Stack Diagnostics Dashboard & Reports**:
   - Professional Next.js (TypeScript) web-dashboard for real-time patient queue viewing, uploading, Grad-CAM visualization, and historical analytics.
-  - Automated, hospital-style PDF report generator detailing patient metrics, predictions, confidence scoring, Grad-CAM overlay plots, clinical action recommendations, and standard regulatory disclaimers.
+  - Automated PDF screening report generator with optional metadata, quality metrics, probability breakdown, Grad-CAM limitations, deterministic referral routing, clinician-review fields, audit trail, and standard safety disclaimers.
 - **Production-Ready & Secure Core**:
   - FastAPI-powered backend exposing high-performance endpoints with role-based API-key authentication (`viewer`, `clinician`, `admin`).
   - Persistent SQLite databases for case history tracking.
@@ -87,6 +87,7 @@ Optional PDF inspection stack:
 ```powershell
 pip install pdfplumber pypdf
 # Install Poppler separately so `pdftoppm` is available for visual PDF rendering.
+# If Poppler is unavailable, `pip install pypdfium2` can render local QA PNGs.
 ```
 
 Frontend:
@@ -180,6 +181,80 @@ python -m src.inference --image tests/_self_check/synthetic_retina.png --model m
 ```
 
 If the CNN is missing, inference does not crash. It falls back to the random-forest baseline when available, routes uncertain cases to manual review, creates an explicit Grad-CAM-unavailable image, and still generates a PDF report.
+
+## Screening Report v2
+
+`src.report_generator.generate_report` now creates a 3-5 page **RetinaAI Screening and Referral Report** plus a machine-readable JSON sidecar next to each PDF. The report is generated from values already produced by the system or entered by the user; it does not use an LLM and does not invent lesions, symptoms, history, treatment, or examination findings.
+
+Report contents:
+
+- Header with report/run ID, report version, timestamp, patient ID, screening site, eye laterality, image gradability, manual-review status, referral category, and prominent screening-only disclaimer.
+- Optional patient/acquisition metadata with `Not provided` for missing fields.
+- Screening summary cards for image quality, AI screening class, referable DR, sight-threatening DR suspicion, confidence category, manual review, and referral category.
+- Original image, processed model-input image when available, and Grad-CAM overlay when available. Grad-CAM is documented as model-output influence only, not lesion detection.
+- Five-class probability bar chart/table for No apparent DR, Mild NPDR, Moderate NPDR, Severe NPDR, and Proliferative DR, with rank, top-two difference, entropy, margin, and thresholds.
+- Image-quality table using only calculated blur/sharpness, brightness, contrast, retina visibility, overall status, and quality-gate reasons. Unsupported checks such as optic-disc, macula, vessel, reflection, eyelash, and field-of-view assessment are explicitly `Not evaluated`.
+- Deterministic findings, referral/next-action section, clinician-review section, lesion-level analysis rows marked `Not evaluated by the current model`, and technical audit trail with safe artifact identifiers and SHA-256 hashes where available.
+
+Safety rules:
+
+- The report is a screening and clinical decision-support prototype, not a confirmed diagnosis.
+- Fallback Random Forest output is marked not validated for automated disposition and always requires manual review.
+- Poor-quality, missing-model, model-error, fallback, malformed-probability, and high-uncertainty cases are conservative and indeterminate.
+- Recommendations are deterministic and rule-based. They do not recommend medication, injections, laser treatment, surgery, or exact follow-up intervals.
+- Lesion analysis is not currently available. Microaneurysms, retinal haemorrhages, hard exudates, soft exudates, neovascularization, and macular involvement are all shown as not evaluated.
+
+Optional metadata fields accepted by the CLI/API/frontend upload flow:
+
+```text
+patient_id, age, sex, eye_laterality, diabetes_type, known_duration_of_diabetes,
+latest_hba1c, blood_pressure, previous_dr_history, current_visual_symptoms,
+capture_device, screening_site, operator_id
+```
+
+CLI example:
+
+```powershell
+python -m src.inference --image tests/_self_check/synthetic_retina.png --patient-id TEST-001 --eye-laterality left --screening-site qa
+```
+
+API example:
+
+```powershell
+curl -X POST http://127.0.0.1:8000/predict `
+  -F "image=@tests/_self_check/synthetic_retina.png" `
+  -F "patient_id=TEST-001" `
+  -F "eye_laterality=left" `
+  -F "screening_site=qa"
+```
+
+Structured sidecar schema:
+
+```json
+{
+  "report_version": "2.0",
+  "metadata": {},
+  "patient": {},
+  "acquisition": {},
+  "preprocessing": {},
+  "image_quality": {},
+  "dr_grading": {},
+  "clinical_endpoints": {
+    "any_dr": {},
+    "referable_dr": {},
+    "sight_threatening_dr": {}
+  },
+  "lesion_analysis": {},
+  "uncertainty": {},
+  "referral": {},
+  "model_provenance": {},
+  "performance": {},
+  "clinician_review": {},
+  "outputs": {}
+}
+```
+
+Rendered synthetic sample pages for layout QA are written under `reports/pdf_render_check_v2/rendered_pdfium/` when PDFium is available locally. Do not use real patient information or identifiable retinal images for samples.
 
 ## API
 

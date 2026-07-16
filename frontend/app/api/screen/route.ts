@@ -32,9 +32,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Upload a retinal image." }, { status: 400 })
   }
 
-  const patientId = incoming.get("patient_id")
-  const patientIdValue = typeof patientId === "string" && patientId.trim() ? patientId.trim() : undefined
-  if (patientIdValue) upstream.append("patient_id", patientIdValue)
+  const metadataFields = [
+    "patient_id",
+    "age",
+    "sex",
+    "eye_laterality",
+    "diabetes_type",
+    "known_duration_of_diabetes",
+    "latest_hba1c",
+    "blood_pressure",
+    "previous_dr_history",
+    "current_visual_symptoms",
+    "capture_device",
+    "screening_site",
+    "operator_id",
+  ]
+  for (const field of metadataFields) {
+    const value = incoming.get(field)
+    if (typeof value === "string" && value.trim()) upstream.append(field, value.trim())
+  }
 
   if (!apiBase) {
     return NextResponse.json(

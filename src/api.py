@@ -21,6 +21,9 @@ REPORTS_DIR = PROJECT_ROOT / "reports"
 UPLOAD_DIR = REPORTS_DIR / "api_uploads"
 ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 ROLE_RANK = {"viewer": 1, "clinician": 2, "admin": 3}
+SEX_VALUES = {"female", "male", "intersex", "other", "prefer_not_to_say", "unknown"}
+EYE_LATERALITY_VALUES = {"left", "right", "unknown"}
+DIABETES_TYPE_VALUES = {"type_1", "type_2", "gestational", "other", "unknown"}
 
 app = FastAPI(
     title="RetinaAI API",
@@ -81,6 +84,86 @@ def _artifact_url(path: str | None) -> str | None:
     return f"/artifacts/{relative.as_posix()}"
 
 
+def _form_text(value: str | None, field: str, max_len: int = 160) -> str | None:
+    if value is None or not value.strip():
+        return None
+    cleaned = " ".join(value.split())
+    if len(cleaned) > max_len:
+        raise HTTPException(status_code=422, detail=f"{field} is too long.")
+    return cleaned
+
+
+def _form_int(value: str | None, field: str, minimum: int, maximum: int) -> int | None:
+    cleaned = _form_text(value, field, max_len=8)
+    if cleaned is None:
+        return None
+    try:
+        parsed = int(cleaned)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"{field} must be an integer.") from exc
+    if parsed < minimum or parsed > maximum:
+        raise HTTPException(status_code=422, detail=f"{field} must be between {minimum} and {maximum}.")
+    return parsed
+
+
+def _form_float(value: str | None, field: str, minimum: float, maximum: float) -> float | None:
+    cleaned = _form_text(value, field, max_len=16)
+    if cleaned is None:
+        return None
+    try:
+        parsed = float(cleaned)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"{field} must be numeric.") from exc
+    if parsed < minimum or parsed > maximum:
+        raise HTTPException(status_code=422, detail=f"{field} must be between {minimum:g} and {maximum:g}.")
+    return parsed
+
+
+def _form_enum(value: str | None, field: str, allowed: set[str]) -> str | None:
+    cleaned = _form_text(value, field, max_len=40)
+    if cleaned is None:
+        return None
+    normalized = cleaned.lower().replace(" ", "_").replace("-", "_")
+    if normalized not in allowed:
+        raise HTTPException(status_code=422, detail=f"{field} must be one of {sorted(allowed)}.")
+    return normalized
+
+
+def _screening_metadata(
+    patient_id: str | None,
+    age: str | None,
+    sex: str | None,
+    eye_laterality: str | None,
+    diabetes_type: str | None,
+    known_duration_of_diabetes: str | None,
+    latest_hba1c: str | None,
+    blood_pressure: str | None,
+    previous_dr_history: str | None,
+    current_visual_symptoms: str | None,
+    capture_device: str | None,
+    screening_site: str | None,
+    operator_id: str | None,
+) -> tuple[dict, dict]:
+    patient = {
+        "patient_id": _form_text(patient_id, "patient_id", 120),
+        "age": _form_int(age, "age", 0, 130),
+        "sex": _form_enum(sex, "sex", SEX_VALUES),
+        "diabetes_type": _form_enum(diabetes_type, "diabetes_type", DIABETES_TYPE_VALUES),
+        "known_duration_of_diabetes": _form_text(known_duration_of_diabetes, "known_duration_of_diabetes", 80),
+        "latest_hba1c": _form_float(latest_hba1c, "latest_hba1c", 0, 25),
+        "blood_pressure": _form_text(blood_pressure, "blood_pressure", 40),
+        "previous_dr_history": _form_text(previous_dr_history, "previous_dr_history", 400),
+        "current_visual_symptoms": _form_text(current_visual_symptoms, "current_visual_symptoms", 400),
+    }
+    acquisition = {
+        "eye_laterality": _form_enum(eye_laterality, "eye_laterality", EYE_LATERALITY_VALUES),
+        "capture_device": _form_text(capture_device, "capture_device", 120),
+        "screening_site": _form_text(screening_site, "screening_site", 160),
+        "operator_id": _form_text(operator_id, "operator_id", 120),
+    }
+    return ({key: value for key, value in patient.items() if value is not None}, {key: value for key, value in acquisition.items() if value is not None})
+
+
 async def _save_upload(upload: UploadFile) -> Path:
     suffix = Path(upload.filename or "image.png").suffix.lower() or ".png"
     if suffix not in ALLOWED_SUFFIXES:
@@ -99,6 +182,7 @@ def _with_urls(result: dict) -> dict:
     outputs["gradcam_url"] = _artifact_url(outputs.get("gradcam_path"))
     outputs["explanation_url"] = _artifact_url(outputs.get("explanation_path"))
     outputs["report_url"] = _artifact_url(outputs.get("report_path"))
+    outputs["json_url"] = _artifact_url(outputs.get("json_path"))
     return result
 
 
@@ -131,17 +215,35 @@ async def predict(
     thresholds: str = Query("configs/thresholds.yaml"),
     patient_id: str | None = Form(None),
     site_id: str | None = Form(None),
+    age: str | None = Form(None),
+    sex: str | None = Form(None),
+    eye_laterality: str | None = Form(None),
+    diabetes_type: str | None = Form(None),
+    known_duration_of_diabetes: str | None = Form(None),
+    latest_hba1c: str | None = Form(None),
+    blood_pressure: str | None = Form(None),
+    previous_dr_history: str | None = Form(None),
+    current_visual_symptoms: str | None = Form(None),
+    capture_device: str | None = Form(None),
+    screening_site: str | None = Form(None),
+    operator_id: str | None = Form(None),
     user: dict[str, str] = Depends(require_role("clinician")),
 ) -> dict:
     image_path = await _save_upload(image)
+    patient, acquisition = _screening_metadata(
+        patient_id, age, sex, eye_laterality, diabetes_type, known_duration_of_diabetes, latest_hba1c, blood_pressure,
+        previous_dr_history, current_visual_symptoms, capture_device, screening_site, operator_id
+    )
     result = screen_retina_image(
         image_path,
         model_path=model,
         fallback_model_path=fallback_model,
         thresholds_path=thresholds,
         output_dir=REPORTS_DIR / "api_reports",
-        patient_id=patient_id,
+        patient_id=patient.get("patient_id"),
         site_id=site_id,
+        patient_metadata=patient,
+        acquisition_metadata=acquisition,
     )
     result = _with_urls(result)
     save_case(result, principal=user)
@@ -168,16 +270,34 @@ async def report(
     fallback_model: str | None = Query("models/baseline_sklearn.pkl"),
     patient_id: str | None = Form(None),
     site_id: str | None = Form(None),
+    age: str | None = Form(None),
+    sex: str | None = Form(None),
+    eye_laterality: str | None = Form(None),
+    diabetes_type: str | None = Form(None),
+    known_duration_of_diabetes: str | None = Form(None),
+    latest_hba1c: str | None = Form(None),
+    blood_pressure: str | None = Form(None),
+    previous_dr_history: str | None = Form(None),
+    current_visual_symptoms: str | None = Form(None),
+    capture_device: str | None = Form(None),
+    screening_site: str | None = Form(None),
+    operator_id: str | None = Form(None),
     user: dict[str, str] = Depends(require_role("clinician")),
 ) -> FileResponse:
     image_path = await _save_upload(image)
+    patient, acquisition = _screening_metadata(
+        patient_id, age, sex, eye_laterality, diabetes_type, known_duration_of_diabetes, latest_hba1c, blood_pressure,
+        previous_dr_history, current_visual_symptoms, capture_device, screening_site, operator_id
+    )
     result = screen_retina_image(
         image_path,
         model_path=model,
         fallback_model_path=fallback_model,
         output_dir=REPORTS_DIR / "api_reports",
-        patient_id=patient_id,
+        patient_id=patient.get("patient_id"),
         site_id=site_id,
+        patient_metadata=patient,
+        acquisition_metadata=acquisition,
     )
     save_case(_with_urls(result), principal=user)
     path = Path(result["outputs"]["report_path"])

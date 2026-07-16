@@ -29,6 +29,8 @@ def test_inference_uses_baseline_fallback(synthetic_retina, work_dir):
     assert result["model"]["fallback_mode"] is True
     assert result["prediction"]["status"] == "available_fallback_baseline"
     assert len(result["prediction"]["probabilities"]) == 5
+    assert result["uncertainty"]["manual_review"] is True
+    assert result["referral"]["result"] == "Not validated for automated disposition"
 
 
 def test_inference_uses_torch_gradcam_for_pt_models(synthetic_retina, work_dir, monkeypatch):
@@ -58,3 +60,63 @@ def test_inference_uses_torch_gradcam_for_pt_models(synthetic_retina, work_dir, 
     assert result["model"]["kind"] == "torch_cnn"
     assert result["prediction"]["status"] == "available"
     assert calls == [(fake_model, synthetic_retina, "features.0", 0, 96)]
+
+
+def test_inference_creates_pdf_json_sidecar_and_structured_schema(synthetic_retina, work_dir):
+    result = screen_retina_image(
+        synthetic_retina,
+        model_path=work_dir / "missing.keras",
+        fallback_model_path=None,
+        output_dir=work_dir / "reports",
+        patient_id="patient-structured",
+    )
+    assert result["report_version"] == "2.0"
+    assert result["patient"]["patient_id"] == "patient-structured"
+    assert result["clinical_endpoints"]["referable_dr"]["status"] == "indeterminate"
+    assert Path(result["outputs"]["report_path"]).exists()
+    assert Path(result["outputs"]["json_path"]).exists()
+    assert Path(result["outputs"]["processed_image_path"]).exists()
+
+
+def test_inference_rejects_poor_quality_without_definitive_classification(dark_image, work_dir):
+    result = screen_retina_image(dark_image, model_path=work_dir / "missing.keras", fallback_model_path=None, output_dir=work_dir / "reports")
+    assert result["quality"]["status"] == "rejected"
+    assert result["prediction"]["status"] == "skipped_quality_rejected"
+    assert result["referral"]["manual_review_required"] is True
+    assert result["clinical_endpoints"]["referable_dr"]["status"] == "indeterminate"
+
+
+def test_inference_model_exception_routes_to_manual_review(synthetic_retina, work_dir):
+    corrupt = work_dir / "corrupt.pkl"
+    corrupt.write_bytes(b"not a pickle")
+    result = screen_retina_image(synthetic_retina, model_path=corrupt, fallback_model_path=None, output_dir=work_dir / "reports")
+    assert result["prediction"]["status"] == "model_error"
+    assert result["uncertainty"]["manual_review"] is True
+    assert result["referral"]["manual_review_required"] is True
+
+
+def test_inference_high_uncertainty_prediction_routes_to_review(synthetic_retina, work_dir, monkeypatch):
+    model_path = work_dir / "model.pt"
+    model_path.write_bytes(b"placeholder")
+
+    monkeypatch.setattr("src.inference.load_model", lambda _path: {"kind": "torch_cnn", "model": object(), "metadata": {"input_size": 96}})
+    monkeypatch.setattr("src.inference.predict_image_probabilities", lambda _bundle, _image: np.asarray([0.3, 0.25, 0.2, 0.15, 0.1]))
+    monkeypatch.setattr("src.inference.generate_torch_gradcam", lambda *_args, **_kwargs: Path(_args[3]).write_bytes(b"gradcam"))
+
+    result = screen_retina_image(synthetic_retina, model_path=model_path, fallback_model_path=None, output_dir=work_dir / "reports")
+    assert result["prediction"]["status"] == "available"
+    assert result["uncertainty"]["manual_review"] is True
+    assert "low_confidence" in result["uncertainty"]["reason"]
+    assert result["clinical_endpoints"]["referable_dr"]["status"] == "indeterminate"
+
+
+def test_inference_malformed_probabilities_route_to_model_error(synthetic_retina, work_dir, monkeypatch):
+    model_path = work_dir / "model.pt"
+    model_path.write_bytes(b"placeholder")
+
+    monkeypatch.setattr("src.inference.load_model", lambda _path: {"kind": "torch_cnn", "model": object(), "metadata": {"input_size": 96}})
+    monkeypatch.setattr("src.inference.predict_image_probabilities", lambda _bundle, _image: np.asarray([float("nan"), 0.2, 0.3, 0.2, 0.3]))
+
+    result = screen_retina_image(synthetic_retina, model_path=model_path, fallback_model_path=None, output_dir=work_dir / "reports")
+    assert result["prediction"]["status"] == "model_error"
+    assert result["uncertainty"]["manual_review"] is True
